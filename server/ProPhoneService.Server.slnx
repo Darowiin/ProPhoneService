@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ProPhoneService.Api.Tests/ProPhoneService.Api.Tests.csproj" />
+  <Project Path="ProPhoneService.Api/ProPhoneService.Api.csproj" />
+</Solution>
