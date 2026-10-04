@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ProPhoneService.Api\ProPhoneService.Api.csproj" />
+    <ProjectReference Include="..\ProPhoneService.Infrastructure.EfCore\ProPhoneService.Infrastructure.EfCore.csproj" />
   </ItemGroup>
 
 </Project>

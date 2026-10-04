@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using ProPhoneService.Domain.Model;
-using ProPhoneService.Infrastructure.EfCore.Configurations;
 
 namespace ProPhoneService.Infrastructure.EfCore;
 

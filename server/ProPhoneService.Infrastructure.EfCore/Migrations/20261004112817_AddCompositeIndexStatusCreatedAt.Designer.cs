@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProPhoneService.Infrastructure.EfCore;
@@ -11,9 +12,11 @@ using ProPhoneService.Infrastructure.EfCore;
 namespace ProPhoneService.Infrastructure.EfCore.Migrations
 {
     [DbContext(typeof(ProPhoneServiceDbContext))]
-    partial class ProPhoneServiceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261004112817_AddCompositeIndexStatusCreatedAt")]
+    partial class AddCompositeIndexStatusCreatedAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

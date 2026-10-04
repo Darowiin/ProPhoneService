@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ProPhoneService.Domain.Model;
-using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Infrastructure.EfCore.Configurations;
 

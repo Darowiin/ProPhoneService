@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ProPhoneService.Domain.Model;
-using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Infrastructure.EfCore.Configurations;
 
@@ -17,7 +16,8 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
 
         builder.HasIndex(x => x.ClientId);
         builder.HasIndex(x => x.DeviceId);
-        builder.HasIndex(x => x.Status);
+        // Составной индекс под запрос панели мастера: фильтр по статусу + сортировка по дате
+        builder.HasIndex(x => new { x.Status, x.CreatedAt }).IsDescending(false, true);
 
         builder
             .HasMany(x => x.StatusHistory)

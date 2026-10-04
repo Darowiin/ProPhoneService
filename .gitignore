@@ -20,7 +20,6 @@ appsettings.Development.json
 appsettings.Local.json
 *.usersecrets
 
-.dockerignore
 .env
 !.env.example
 
