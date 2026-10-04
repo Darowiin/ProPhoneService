@@ -16,7 +16,7 @@ public class VisitTimeValidatorTests
     };
 
     /// <summary>
-    /// UTC -> локальное время Самары (UTC+4)
+    /// Создать UTC-время по локальному времени Самары
     /// </summary>
     private static DateTime At(int day, int localHour, int localMinute = 0)
     {
@@ -93,45 +93,52 @@ public class VisitTimeValidatorTests
     }
 
     [Fact]
-    public void Validate_LocalTimeIsUsed_NotServerUtc()
+    public void Validate_UtcIsConvertedToWorkshopLocalTime()
     {
+        var visitUtc = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc);
+
         var error = VisitTimeValidator.Validate(
-            new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Utc), _nowUtc, Options());
+            visitUtc,
+            _nowUtc,
+            Options());
 
         Assert.NotNull(error);
         Assert.Contains("выходной", error);
     }
 
     [Fact]
-    public void Validate_LocalKindInput_ConvertedToUtcBeforeComparison()
+    public void Validate_UtcKindIsRequired()
     {
         var local = new DateTime(2026, 10, 5, 12, 0, 0, DateTimeKind.Local);
 
-        var error = VisitTimeValidator.Validate(local, _nowUtc, Options());
-
-        Assert.Null(error);
+        Assert.Throws<ArgumentException>(() =>
+            VisitTimeValidator.Validate(
+                local,
+                _nowUtc,
+                Options()));
     }
 
     [Fact]
-    public void Validate_UnspecifiedKindInput_TreatedAsUtc()
+    public void Validate_UnspecifiedKindIsRejected()
     {
-        var unspecified = new DateTime(2026, 10, 10, 9, 0, 0, DateTimeKind.Unspecified);
+        var unspecified = new DateTime(2026, 10, 5, 12, 0, 0, DateTimeKind.Unspecified);
 
-        var error = VisitTimeValidator.Validate(unspecified, _nowUtc, Options());
-
-        Assert.NotNull(error);
-        Assert.Contains("выходной", error);
+        Assert.Throws<ArgumentException>(() =>
+            VisitTimeValidator.Validate(
+                unspecified,
+                _nowUtc,
+                Options()));
     }
 
     [Fact]
-    public void Validate_LocalKindInPast_ReturnsPastError()
+    public void Validate_NowUtcMustBeUtc()
     {
-        var local = new DateTime(2026, 10, 5, 10, 0, 0, DateTimeKind.Local);
-        var nowUtc = new DateTime(2026, 10, 5, 8, 0, 0, DateTimeKind.Utc);
+        var nowLocal = new DateTime(2026, 10, 5, 8, 0, 0, DateTimeKind.Local);
 
-        var error = VisitTimeValidator.Validate(local, nowUtc, Options());
-
-        Assert.NotNull(error);
-        Assert.Contains("прошло", error);
+        Assert.Throws<ArgumentException>(() =>
+            VisitTimeValidator.Validate(
+                At(5, 12),
+                nowLocal,
+                Options()));
     }
 }

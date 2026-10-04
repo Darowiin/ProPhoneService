@@ -10,18 +10,21 @@ public static class VisitTimeValidator
     /// <summary>
     /// Проверить, что дата визита попадает в рабочие часы мастерской и не в прошлом
     /// </summary>
-    /// <param name="preferredVisitAtUtc">Дата и время визита; Kind нормализуется к UTC (Unspecified трактуется как UTC)</param>
-    /// <param name="nowUtc">Текущее время (UTC)</param>
+    /// <param name="preferredVisitAtUtc">Дата и время визита в UTC</param>
+    /// <param name="nowUtc">Текущее время в UTC</param>
     /// <param name="options">Настройки режима работы мастерской</param>
     /// <returns>Ошибка валидации или <c>null</c>, если дата корректна</returns>
     public static string? Validate(DateTime preferredVisitAtUtc, DateTime nowUtc, WorkshopOptions options)
     {
-        preferredVisitAtUtc = preferredVisitAtUtc.Kind switch
+        if (preferredVisitAtUtc.Kind != DateTimeKind.Utc)
         {
-            DateTimeKind.Utc => preferredVisitAtUtc,
-            DateTimeKind.Local => preferredVisitAtUtc.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(preferredVisitAtUtc, DateTimeKind.Utc),
-        };
+            throw new ArgumentException("предпочитаемое время визита должен быть в UTC", nameof(preferredVisitAtUtc));
+        }
+
+        if (nowUtc.Kind != DateTimeKind.Utc)
+        {
+            throw new ArgumentException("Текущее время должно быть в UTC", nameof(nowUtc));
+        }
 
         if (preferredVisitAtUtc <= nowUtc)
         {
