@@ -35,7 +35,7 @@ public class RepairOrder
     /// Текущий статус заказа
     /// </summary>
     [Column("status")]
-    public required RepairStatus Status { get; set; }
+    public RepairStatus Status { get; private set; }
 
     /// <summary>
     /// Итоговая стоимость ремонта, руб
@@ -68,4 +68,48 @@ public class RepairOrder
     /// Услуги, входящие в заказ
     /// </summary>
     public List<RepairOrderService> Services { get; set; } = [];
+
+    /// <summary>
+    /// Установить начальный статус заказа (только один раз, при создании)
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Статус уже установлен</exception>
+    public void Start()
+    {
+        if (StatusHistory.Count != 0)
+        {
+            throw new InvalidOperationException("Начальный статус заказа уже установлен");
+        }
+
+        Status = RepairStatus.Created;
+        StatusHistory.Add(new RepairStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            RepairOrderId = Id,
+            Status = RepairStatus.Created,
+        });
+    }
+
+    /// <summary>
+    /// Сменить статус заказа по правилам машины состояний
+    /// </summary>
+    /// <param name="next">Целевой статус</param>
+    /// <param name="comment">Комментарий к смене статуса</param>
+    /// <exception cref="InvalidOperationException">Переход из текущего статуса в целевой запрещён</exception>
+    public void ChangeStatus(RepairStatus next, string? comment = null)
+    {
+        if (!RepairStatusTransitions.IsAllowed(Status, next))
+        {
+            throw new InvalidOperationException(
+                $"Недопустимый переход статуса заказа: {Status} -> {next}");
+        }
+
+        Status = next;
+        StatusHistory.Add(new RepairStatusHistory
+        {
+            Id = Guid.NewGuid(),
+            RepairOrderId = Id,
+            Status = next,
+            Comment = comment,
+        });
+    }
 }
