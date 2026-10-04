@@ -16,7 +16,7 @@ public interface IRepository<T> where T : class
     /// </summary>
     /// <param name="skip">Количество пропускаемых записей</param>
     /// <param name="take">Количество возвращаемых записей</param>
-    public Task<IReadOnlyList<T>> GetAllAsync(int skip = 0, int take = 50, CancellationToken cancellationToken = default);
+    public Task<IReadOnlyList<T>> GetAllAsync(int skip = 0, int take = 25, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Добавить новую сущность (сохранение — через <see cref="SaveChangesAsync"/>)

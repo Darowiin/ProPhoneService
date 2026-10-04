@@ -21,7 +21,7 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     public Task<IReadOnlyList<RepairOrder>> GetAllByClientIdAsync(
         Guid clientId,
         int skip = 0,
-        int take = 50,
+        int take = 25,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -31,6 +31,6 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     public Task<IReadOnlyList<RepairOrder>> GetByStatusAsync(
         RepairStatus status,
         int skip = 0,
-        int take = 50,
+        int take = 25,
         CancellationToken cancellationToken = default);
 }

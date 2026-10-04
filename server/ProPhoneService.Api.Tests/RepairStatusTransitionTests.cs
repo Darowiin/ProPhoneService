@@ -7,7 +7,7 @@ public class RepairStatusTransitionTests
 {
     private static RepairOrder CreateStartedOrder()
     {
-        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid() };
+        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PreferredVisitAt = DateTime.UtcNow.AddDays(1) };
         order.Start();
         return order;
     }
@@ -86,7 +86,7 @@ public class RepairStatusTransitionTests
     [Fact]
     public void Start_WritesInitialHistoryEntry()
     {
-        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid() };
+        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PreferredVisitAt = DateTime.UtcNow.AddDays(1) };
 
         order.Start();
 

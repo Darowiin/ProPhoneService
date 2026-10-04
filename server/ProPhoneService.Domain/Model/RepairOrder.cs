@@ -50,6 +50,12 @@ public class RepairOrder
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     /// <summary>
+    /// Предпочитаемая дата и время визита клиента (UTC)
+    /// </summary>
+    [Column("preferred_visit_at")]
+    public required DateTime PreferredVisitAt { get; set; }
+
+    /// <summary>
     /// Клиент, оформивший заказ
     /// </summary>
     public Client? Client { get; set; }

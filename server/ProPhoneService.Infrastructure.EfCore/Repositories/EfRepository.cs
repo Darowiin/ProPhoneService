@@ -36,6 +36,7 @@ public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
 
         return await Set
             .AsNoTracking()
+            .OrderBy(x => EF.Property<Guid>(x, "Id"))
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
