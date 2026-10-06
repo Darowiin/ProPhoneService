@@ -21,6 +21,7 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
                 .ThenInclude(x => x.Service)
             .Include(x => x.Device)
             .Include(x => x.Client)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
@@ -37,6 +38,7 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
             .AsNoTracking()
             .Where(x => x.ClientId == clientId)
             .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
@@ -55,6 +57,7 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
             .AsNoTracking()
             .Where(x => x.Status == status)
             .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);

@@ -28,9 +28,10 @@ public sealed class WorkshopOptions
     public TimeOnly CloseAt { get; set; } = new(19, 0);
 
     /// <summary>
-    /// Рабочие дни недели (ISO 8601: 1 — понедельник ... 7 — воскресенье)
+    /// Рабочие дни недели (ISO 8601: 1 — понедельник ... 7 — воскресенье);
+    /// По умолчанию пусто: должны задаваться конфигурацией, отсутствие отлавливает <see cref="Validate"/>
     /// </summary>
-    public int[] WorkingDays { get; set; } = [1, 2, 3, 4, 5];
+    public int[] WorkingDays { get; set; } = [];
 
     /// <summary>
     /// Проверить корректность настроек режима работы

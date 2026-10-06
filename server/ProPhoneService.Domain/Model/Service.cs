@@ -7,7 +7,7 @@ namespace ProPhoneService.Domain.Model;
 /// Услуга из прайс-листа мастерской
 /// </summary>
 [Table("service")]
-public class Service
+public class Service : IEntity
 {
     /// <summary>
     /// Уникальный идентификатор услуги

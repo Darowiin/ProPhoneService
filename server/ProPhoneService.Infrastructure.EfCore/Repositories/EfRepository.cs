@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 
 namespace ProPhoneService.Infrastructure.EfCore.Repositories;
@@ -8,7 +9,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Repositories;
 /// </summary>
 /// <typeparam name="T">Тип сущности с ключом <c>Guid Id</c></typeparam>
 public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
-    where T : class
+    where T : class, IEntity
 {
     /// <summary>
     /// Максимальный размер страницы для <see cref="GetAllAsync"/>
@@ -36,7 +37,7 @@ public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
 
         return await Set
             .AsNoTracking()
-            .OrderBy(x => EF.Property<Guid>(x, "Id"))
+            .OrderBy(x => x.Id)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);

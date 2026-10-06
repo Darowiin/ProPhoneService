@@ -12,8 +12,8 @@ using ProPhoneService.Infrastructure.EfCore;
 namespace ProPhoneService.Infrastructure.EfCore.Migrations
 {
     [DbContext(typeof(ProPhoneServiceDbContext))]
-    [Migration("20261004144654_AddPreferredVisitAt")]
-    partial class AddPreferredVisitAt
+    [Migration("20261006183856_MakeRepairOrderStatusNullable")]
+    partial class MakeRepairOrderStatusNullable
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -110,18 +110,23 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("device_id");
 
-                    b.Property<DateTime>("PreferredVisitAt")
+                    b.Property<DateTime?>("PreferredVisitAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("preferred_visit_at");
 
                     b.Property<string>("Status")
-                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("status");
 
                     b.Property<decimal>("TotalPrice")
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("total_price");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 
@@ -287,7 +292,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasOne("ProPhoneService.Domain.Model.Service", "Service")
                         .WithMany("RepairOrders")
                         .HasForeignKey("ServiceId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("RepairOrder");

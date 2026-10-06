@@ -18,7 +18,7 @@ public static class VisitTimeValidator
     {
         if (preferredVisitAtUtc.Kind != DateTimeKind.Utc)
         {
-            throw new ArgumentException("предпочитаемое время визита должен быть в UTC", nameof(preferredVisitAtUtc));
+            throw new ArgumentException("Предпочитаемое время визита должно быть в UTC", nameof(preferredVisitAtUtc));
         }
 
         if (nowUtc.Kind != DateTimeKind.Utc)

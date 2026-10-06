@@ -1,0 +1,5 @@
+{
+  "ConnectionStrings": {
+    "Default": "Host=localhost;Port=5432;Database=prophoneservice;Username=postgres;Password=postgres"
+  }
+}

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using ProPhoneService.Infrastructure.EfCore;
@@ -11,9 +12,11 @@ using ProPhoneService.Infrastructure.EfCore;
 namespace ProPhoneService.Infrastructure.EfCore.Migrations
 {
     [DbContext(typeof(ProPhoneServiceDbContext))]
-    partial class ProPhoneServiceDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261006183532_AddPreferredVisitAt")]
+    partial class AddPreferredVisitAt
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -112,18 +115,13 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnName("preferred_visit_at");
 
                     b.Property<string>("Status")
+                        .IsRequired()
                         .HasColumnType("text")
                         .HasColumnName("status");
 
                     b.Property<decimal>("TotalPrice")
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("total_price");
-
-                    b.Property<uint>("xmin")
-                        .IsConcurrencyToken()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("xid")
-                        .HasColumnName("xmin");
 
                     b.HasKey("Id");
 

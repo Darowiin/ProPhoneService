@@ -7,7 +7,7 @@ namespace ProPhoneService.Domain.Model;
 /// Клиент мастерской (автор заказов и отзывов)
 /// </summary>
 [Table("client")]
-public class Client
+public class Client : IEntity
 {
     /// <summary>
     /// Уникальный идентификатор клиента
@@ -25,12 +25,16 @@ public class Client
     /// <summary>
     /// Телефон клиента (необязательно)
     /// </summary>
+    [RegularExpression(
+        @"^\+7\d{10}$",
+        ErrorMessage = "Некорректный номер телефона")]
     [Column("phone")]
     public string? Phone { get; set; }
 
     /// <summary>
     /// Email клиента (необязательно)
     /// </summary>
+    [EmailAddress]
     [Column("email")]
     public string? Email { get; set; }
 

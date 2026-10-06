@@ -18,6 +18,6 @@ public class ServiceConfiguration : IEntityTypeConfiguration<Service>
             .HasMany(x => x.RepairOrders)
             .WithOne(x => x.Service)
             .HasForeignKey(x => x.ServiceId)
-            .OnDelete(DeleteBehavior.Cascade);
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

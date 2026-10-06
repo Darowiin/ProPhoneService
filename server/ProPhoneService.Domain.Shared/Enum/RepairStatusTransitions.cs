@@ -33,6 +33,8 @@ public static class RepairStatusTransitions
     /// <param name="from">Текущий статус</param>
     public static IReadOnlyCollection<RepairStatus> GetAllowed(RepairStatus from)
     {
-        return _map.TryGetValue(from, out var allowed) ? allowed : [];
+        return _map.TryGetValue(from, out var allowed)
+            ? Array.AsReadOnly(allowed)
+            : Array.Empty<RepairStatus>();
     }
 }

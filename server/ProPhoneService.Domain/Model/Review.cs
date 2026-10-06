@@ -7,7 +7,7 @@ namespace ProPhoneService.Domain.Model;
 /// Отзыв клиента о работе мастерской
 /// </summary>
 [Table("review")]
-public class Review
+public class Review : IEntity
 {
     /// <summary>
     /// Уникальный идентификатор отзыва

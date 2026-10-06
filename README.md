@@ -32,7 +32,7 @@ cp .env.example .env        # при необходимости поправит
 docker compose up --build   # БД на 5432, API на 8080
 ```
 
-API применяет миграции при старте (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
+API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
 
 ### Backend без Docker
 
@@ -40,11 +40,17 @@ API применяет миграции при старте (`Database.Migrate()
 cd server
 dotnet restore
 dotnet build
-dotnet test          # прогон тестов (35)
+dotnet test
 dotnet run --project ProPhoneService.Api
 ```
 
-Connection string для локального запуска - в `server/ProPhoneService.Api/appsettings.Development.json`, БД при этом всё равно нужна - например, `docker compose up db`
+Connection string для локального запуска - в `server/ProPhoneService.Api/appsettings.Development.json` (в `.gitignore`):
+
+```bash
+cp server/ProPhoneService.Api/appsettings.Development.json.example server/ProPhoneService.Api/appsettings.Development.json
+```
+
+Пароль в example совпадает с дефолтом из `.env.example`, так что с `docker compose up db` заработает сразу, БД при этом всё равно нужна
 
 Health-check: `GET /health` → `Healthy`.
 
@@ -85,13 +91,14 @@ server/
 
 ## Машина состояний заказа
 
-Смена статуса - только через `RepairOrder.ChangeStatus()`, Карта переходов - `RepairStatusTransitions` в `Domain.Shared`
+Смена статуса - только через `RepairOrder.ChangeStatus()`, Карта переходов - `RepairStatusTransitions` в `Domain.Shared`.
+Заказ создаётся фабрикой `RepairOrder.Create(...)` (или вручную через `Start()`): до инициализации `Status == null` и `ChangeStatus` выбрасывает исключение
 
 ```
 Матрица переходов: Created → Diagnostics → Agreed → InProgress → Ready → Completed; отмена (Cancelled) из Created/Agreed/InProgress
 ```
 
-Каждая смена пишет запись в `repair_status_history`, Запрещённый переход -> `InvalidOperationException` (на уровне API будет 409)
+Каждая смена пишет запись в `repair_status_history`, Запрещённый переход -> `InvalidOperationException`, конфликт параллельных изменений (токен конкурентности `xmin`) -> `DbUpdateConcurrencyException` (на уровне API оба будут 409)
 
 ## CI
 

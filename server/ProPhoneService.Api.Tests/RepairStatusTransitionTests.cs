@@ -7,9 +7,7 @@ public class RepairStatusTransitionTests
 {
     private static RepairOrder CreateStartedOrder()
     {
-        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PreferredVisitAt = DateTime.UtcNow.AddDays(1) };
-        order.Start();
-        return order;
+        return RepairOrder.Create(Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow.AddDays(1));
     }
 
     public static readonly TheoryData<RepairStatus, RepairStatus> AllowedTransitions = new()
@@ -101,6 +99,42 @@ public class RepairStatusTransitionTests
         var order = CreateStartedOrder();
 
         Assert.Throws<InvalidOperationException>(order.Start);
+    }
+
+    [Fact]
+    public void ChangeStatus_BeforeStart_Throws()
+    {
+        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid() };
+
+        Assert.Throws<InvalidOperationException>(() => order.ChangeStatus(RepairStatus.InDiagnostic));
+
+        Assert.Null(order.Status);
+        Assert.Empty(order.StatusHistory);
+    }
+
+    [Fact]
+    public void Start_DoesNotDependOnLoadedHistory_ThrowsOnPersistedOrder()
+    {
+        // Симуляция загрузки без Include(StatusHistory): история не загружена, но Status уже установлен в БД
+        var order = CreateStartedOrder();
+        order.StatusHistory.Clear();
+
+        Assert.Throws<InvalidOperationException>(order.Start);
+    }
+
+    [Fact]
+    public void GetAllowed_ReturnsImmutableWrapper_ExternalMutationCannotChangeRules()
+    {
+        var allowed = RepairStatusTransitions.GetAllowed(RepairStatus.Created);
+
+        if (allowed is RepairStatus[] mutable)
+        {
+            mutable[0] = RepairStatus.Completed;
+        }
+
+        Assert.Equal(
+            new[] { RepairStatus.InDiagnostic, RepairStatus.Cancelled },
+            RepairStatusTransitions.GetAllowed(RepairStatus.Created));
     }
 
     [Fact]

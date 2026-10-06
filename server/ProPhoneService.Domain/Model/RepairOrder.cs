@@ -8,7 +8,7 @@ namespace ProPhoneService.Domain.Model;
 /// Заказ на ремонт телефона в мастерской
 /// </summary>
 [Table("repair_order")]
-public class RepairOrder
+public class RepairOrder : IEntity
 {
     /// <summary>
     /// Уникальный идентификатор заказа
@@ -32,10 +32,10 @@ public class RepairOrder
     public required Guid DeviceId { get; set; }
 
     /// <summary>
-    /// Текущий статус заказа
+    /// Текущий статус заказа (<c>null</c> - заказ ещё не инициализирован через <see cref="Start"/>)
     /// </summary>
     [Column("status")]
-    public RepairStatus Status { get; private set; }
+    public RepairStatus? Status { get; private set; }
 
     /// <summary>
     /// Итоговая стоимость ремонта, руб
@@ -53,7 +53,7 @@ public class RepairOrder
     /// Предпочитаемая дата и время визита клиента (UTC)
     /// </summary>
     [Column("preferred_visit_at")]
-    public required DateTime PreferredVisitAt { get; set; }
+    public DateTime? PreferredVisitAt { get; set; }
 
     /// <summary>
     /// Клиент, оформивший заказ
@@ -76,23 +76,38 @@ public class RepairOrder
     public List<RepairOrderService> Services { get; set; } = [];
 
     /// <summary>
+    /// Создать заказ и сразу установить начальный статус <see cref="RepairStatus.Created"/>
+    /// </summary>
+    /// <param name="clientId">Идентификатор клиента, оформившего заказ</param>
+    /// <param name="deviceId">Идентификатор устройства в ремонте</param>
+    /// <param name="preferredVisitAt">Предпочитаемая дата и время визита клиента (UTC, необязательно)</param>
+    public static RepairOrder Create(Guid clientId, Guid deviceId, DateTime? preferredVisitAt = null)
+    {
+        var order = new RepairOrder
+        {
+            Id = Guid.NewGuid(),
+            ClientId = clientId,
+            DeviceId = deviceId,
+            CreatedAt = DateTime.UtcNow,
+            PreferredVisitAt = preferredVisitAt,
+        };
+
+        order.Start();
+        return order;
+    }
+
+    /// <summary>
     /// Установить начальный статус заказа (только один раз, при создании)
     /// </summary>
     /// <exception cref="InvalidOperationException">Статус уже установлен</exception>
     public void Start()
     {
-        if (StatusHistory.Count != 0)
+        if (Status is not null)
         {
             throw new InvalidOperationException("Начальный статус заказа уже установлен");
         }
 
-        Status = RepairStatus.Created;
-        StatusHistory.Add(new RepairStatusHistory
-        {
-            Id = Guid.NewGuid(),
-            RepairOrderId = Id,
-            Status = RepairStatus.Created,
-        });
+        Apply(RepairStatus.Created, comment: null);
     }
 
     /// <summary>
@@ -100,15 +115,28 @@ public class RepairOrder
     /// </summary>
     /// <param name="next">Целевой статус</param>
     /// <param name="comment">Комментарий к смене статуса</param>
-    /// <exception cref="InvalidOperationException">Переход из текущего статуса в целевой запрещён</exception>
+    /// <exception cref="InvalidOperationException">Заказ не инициализирован или переход из текущего статуса в целевой запрещён</exception>
     public void ChangeStatus(RepairStatus next, string? comment = null)
     {
-        if (!RepairStatusTransitions.IsAllowed(Status, next))
+        if (Status is null)
+        {
+            throw new InvalidOperationException("Заказ не инициализирован: сначала Start()");
+        }
+
+        if (!RepairStatusTransitions.IsAllowed(Status.Value, next))
         {
             throw new InvalidOperationException(
                 $"Недопустимый переход статуса заказа: {Status} -> {next}");
         }
 
+        Apply(next, comment);
+    }
+
+    /// <summary>
+    /// Применить статус: обновить поле и дописать запись в историю
+    /// </summary>
+    private void Apply(RepairStatus next, string? comment)
+    {
         Status = next;
         StatusHistory.Add(new RepairStatusHistory
         {

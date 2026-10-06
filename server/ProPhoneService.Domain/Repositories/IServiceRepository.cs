@@ -11,5 +11,5 @@ public interface IServiceRepository : IRepository<Service>
     /// Получить все активные услуги, отсортированные по названию
     /// </summary>
     /// <remarks>Для витрины и формы заявки</remarks>
-    public Task<IReadOnlyList<Service>> GetAllActiveAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Service>> GetAllActiveAsync(CancellationToken cancellationToken = default);
 }

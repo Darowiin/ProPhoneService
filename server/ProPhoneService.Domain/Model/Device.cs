@@ -8,7 +8,7 @@ namespace ProPhoneService.Domain.Model;
 /// Устройство (техника), сданное в ремонт
 /// </summary>
 [Table("device")]
-public class Device
+public class Device : IEntity
 {
     /// <summary>
     /// Уникальный идентификатор устройства
