@@ -140,7 +140,7 @@ public class RepairOrder : IEntity
         Status = next;
         StatusHistory.Add(new RepairStatusHistory
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.Empty,
             RepairOrderId = Id,
             Status = next,
             Comment = comment,

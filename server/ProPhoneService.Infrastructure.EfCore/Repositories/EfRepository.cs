@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 
@@ -62,9 +63,17 @@ public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
     }
 
     /// <inheritdoc />
-    public virtual Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public virtual async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        return context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            return await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // Переводим EF-специфичное исключение в доменное: прикладной слой не зависит от EF Core
+            throw new ConcurrencyConflictException("Сущность была изменена другим процессом", ex);
+        }
     }
 
     /// <summary>
