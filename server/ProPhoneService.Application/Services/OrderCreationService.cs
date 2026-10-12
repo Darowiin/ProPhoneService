@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using ProPhoneService.Application.Contracts;
+using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Services;
@@ -71,52 +72,74 @@ public class OrderCreationService(
             return CreateOrderResult.Failure(errors);
         }
 
-        // Найти клиента по телефону (приоритет) или по email; иначе создать нового
-        var existingClient = hasPhone
-            ? await clientRepository.GetByPhoneAsync(request.Phone!, cancellationToken)
-            : await clientRepository.GetByEmailAsync(request.Email!, cancellationToken);
-
-        var client = existingClient ?? new Client
+        // Устройство и заявка пересоздаются на повторе: после неудачного сохранения
+        // конфликтную вставку клиента нужно отвязать (Remove на сущности в состоянии Added отцепляет её)
+        const int maxAttempts = 2;
+        for (var attempt = 1; ; attempt++)
         {
-            Id = Guid.NewGuid(),
-            Name = request.Name,
-            Phone = request.Phone,
-            Email = request.Email,
-        };
+            // Найти клиента по телефону (приоритет) или по email; иначе создать нового
+            var existingClient = hasPhone
+                ? await clientRepository.GetByPhoneAsync(request.Phone!, cancellationToken)
+                : null;
 
-        var device = new Device
-        {
-            Id = Guid.NewGuid(),
-            Type = request.DeviceType!.Value,
-            Manufacturer = request.DeviceManufacturer,
-            Model = request.DeviceModel,
-        };
-
-        var order = RepairOrder.Create(
-            client.Id,
-            device.Id,
-            preferredVisitAtUtc);
-        order.TotalPrice = totalPrice;
-
-        foreach (var service in selectedServices)
-        {
-            order.Services.Add(new RepairOrderService
+            if (existingClient is null && hasEmail)
             {
-                RepairOrderId = order.Id,
-                ServiceId = service.Id,
-                Price = service.Price,
-            });
+                existingClient = await clientRepository.GetByEmailAsync(request.Email!, cancellationToken);
+            }
+
+            var client = existingClient ?? new Client
+            {
+                Id = Guid.NewGuid(),
+                Name = request.Name,
+                Phone = request.Phone,
+                Email = request.Email,
+            };
+
+            var device = new Device
+            {
+                Id = Guid.NewGuid(),
+                Type = request.DeviceType!.Value,
+                Manufacturer = request.DeviceManufacturer,
+                Model = request.DeviceModel,
+            };
+
+            var order = RepairOrder.Create(
+                client.Id,
+                device.Id,
+                preferredVisitAtUtc);
+            order.TotalPrice = totalPrice;
+
+            foreach (var service in selectedServices)
+            {
+                order.Services.Add(new RepairOrderService
+                {
+                    RepairOrderId = order.Id,
+                    ServiceId = service.Id,
+                    Price = service.Price,
+                });
+            }
+
+            if (existingClient is null)
+            {
+                await clientRepository.AddAsync(client, cancellationToken);
+            }
+
+            await deviceRepository.AddAsync(device, cancellationToken);
+            await orderRepository.AddAsync(order, cancellationToken);
+
+            try
+            {
+                await orderRepository.SaveChangesAsync(cancellationToken);
+                return CreateOrderResult.Success(order.Id);
+            }
+            catch (UniqueConstraintViolationException) when (existingClient is null && attempt < maxAttempts)
+            {
+                // Гонка: параллельный запрос уже вставил клиента с таким же контактом;
+                // отвязываем неудачные вставки и на следующем шаге переиспользуем победителя
+                clientRepository.Remove(client);
+                deviceRepository.Remove(device);
+                orderRepository.Remove(order);
+            }
         }
-
-        if (existingClient is null)
-        {
-            await clientRepository.AddAsync(client, cancellationToken);
-        }
-
-        await deviceRepository.AddAsync(device, cancellationToken);
-        await orderRepository.AddAsync(order, cancellationToken);
-        await orderRepository.SaveChangesAsync(cancellationToken);
-
-        return CreateOrderResult.Success(order.Id);
     }
 }

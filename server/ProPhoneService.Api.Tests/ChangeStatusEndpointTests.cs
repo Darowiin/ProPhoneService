@@ -30,7 +30,7 @@ public class ChangeStatusEndpointTests
                 {
                     var repository = new Mock<IRepairOrderRepository>();
                     repository
-                        .Setup(r => r.GetWithDetailsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
                         .ReturnsAsync((Guid id, CancellationToken _) => Order is { Id: var orderId } && orderId == id
                             ? Order
                             : null);

@@ -27,7 +27,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1)
+        if (page < 1 || page > OrderWorkflowService.MaxPage)
         {
             return BadRequest(new ProblemDetails
             {
@@ -39,6 +39,31 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         var pageItems = await ordersService.GetPageAsync(status, page, cancellationToken);
 
         return Ok(pageItems);
+    }
+
+    /// <summary>
+    /// Получить карточку заказа: клиент, устройство, услуги и тайм-лайн статусов
+    /// </summary>
+    /// <param name="id">Идентификатор заказа</param>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType<RepairOrderDetailDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<RepairOrderDetailDto>> GetById(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var card = await ordersService.GetByIdAsync(id, cancellationToken);
+
+        if (card is null)
+        {
+            return NotFound(new ProblemDetails
+            {
+                Title = "Заказ не найден",
+                Detail = "Заказ не существует",
+            });
+        }
+
+        return Ok(card);
     }
 
     /// <summary>
@@ -102,6 +127,8 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
             return ValidationProblem(details);
         }
 
-        return Created($"/api/orders/{result.OrderId}", new CreateOrderResponse(result.OrderId!.Value));
+        var orderId = result.OrderId!.Value;
+
+        return CreatedAtAction(nameof(GetById), new { id = orderId }, new CreateOrderResponse(orderId));
     }
 }

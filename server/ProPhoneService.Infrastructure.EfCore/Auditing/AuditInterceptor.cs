@@ -7,9 +7,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Auditing;
 /// <summary>
 /// Заполнение служебных полей при сохранении:
 /// <c>CreatedAt</c> - момент добавления сущности, <c>ChangedAt</c> - момент записи истории статуса;
-/// Данные проставляются в том же батче, что и сами изменения (без отдельной таблицы аудита)
+/// Время берётся из единого источника - <see cref="TimeProvider"/>, значения проставляются
+/// в том же батче, что и сами изменения (без отдельной таблицы аудита)
 /// </summary>
-public class AuditInterceptor : SaveChangesInterceptor
+public class AuditInterceptor(TimeProvider timeProvider) : SaveChangesInterceptor
 {
     /// <inheritdoc />
     public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
@@ -30,14 +31,14 @@ public class AuditInterceptor : SaveChangesInterceptor
         return base.SavingChanges(eventData, result);
     }
 
-    private static void StampTimestamps(DbContext? context)
+    private void StampTimestamps(DbContext? context)
     {
         if (context is null)
         {
             return;
         }
 
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
 
         foreach (var entry in context.ChangeTracker.Entries()
                      .Where(e => e.State is EntityState.Added or EntityState.Modified))

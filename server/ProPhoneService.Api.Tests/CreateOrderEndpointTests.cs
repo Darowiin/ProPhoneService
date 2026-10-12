@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using ProPhoneService.Application.Contracts;
+using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 
@@ -38,6 +39,13 @@ public class CreateOrderEndpointTests
 
         public Client? ExistingClient { get; init; }
 
+        /// <summary>
+        /// Клиент, который «появляется» в базе после первой неудачной вставки (гонка)
+        /// </summary>
+        public Client? RaceWinner { get; init; }
+
+        public bool UniqueViolationOnFirstSave { get; init; }
+
         public RepairOrder? CreatedOrder { get; private set; }
 
         public Client? CreatedClient { get; private set; }
@@ -51,9 +59,14 @@ public class CreateOrderEndpointTests
                 host.ConfigureTestServices(services =>
                 {
                     var clientRepo = new Mock<IClientRepository>();
+                    var phoneLookups = 0;
                     clientRepo
                         .Setup(r => r.GetByPhoneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                        .ReturnsAsync((string phone, CancellationToken _) => ExistingClient);
+                        .ReturnsAsync((string phone, CancellationToken _) =>
+                        {
+                            phoneLookups++;
+                            return RaceWinner is not null && phoneLookups > 1 ? RaceWinner : ExistingClient;
+                        });
                     clientRepo
                         .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                         .ReturnsAsync((string email, CancellationToken _) => ExistingClient);
@@ -79,9 +92,20 @@ public class CreateOrderEndpointTests
                         .Setup(r => r.AddAsync(It.IsAny<RepairOrder>(), It.IsAny<CancellationToken>()))
                         .Callback((RepairOrder o, CancellationToken _) => CreatedOrder = o)
                         .Returns(Task.CompletedTask);
+                    var savedCalls = 0;
                     orderRepo
                         .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
-                        .ReturnsAsync(1);
+                        .Callback(() => savedCalls++)
+                        .ReturnsAsync(() =>
+                        {
+                            if (UniqueViolationOnFirstSave && savedCalls == 1)
+                            {
+                                throw new UniqueConstraintViolationException(
+                                    "Дубликат контакта", new Exception());
+                            }
+
+                            return 1;
+                        });
 
                     services.RemoveAll<IClientRepository>();
                     services.AddScoped(_ => clientRepo.Object);
@@ -282,5 +306,32 @@ public class CreateOrderEndpointTests
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(existing.Id, harness.CreatedOrder.ClientId);
         Assert.Null(harness.CreatedClient);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateContactRace_RetriesWithWinnerAndReturns201()
+    {
+        var winner = new Client
+        {
+            Id = Guid.NewGuid(),
+            Name = "Победитель гонки",
+            Phone = "+79001234567",
+            Email = null,
+        };
+        var harness = new CreateOrderHarness
+        {
+            UniqueViolationOnFirstSave = true,
+            RaceWinner = winner,
+        };
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([]));
+
+        // Конфликт уникальности на первой вставке -> победитель подтягивается, заявка создаётся на его Id
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(harness.CreatedOrder);
+        Assert.Equal(winner.Id, harness.CreatedOrder.ClientId);
+        Assert.NotEqual(winner.Id, harness.CreatedOrder.Id);
     }
 }

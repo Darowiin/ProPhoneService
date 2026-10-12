@@ -13,7 +13,15 @@ public class OrderWorkflowService(
     IRepairOrderRepository orderRepository,
     IMapper mapper)
 {
-    private const int PageSize = 25;
+    /// <summary>
+    /// Размер страницы для списка заказов
+    /// </summary>
+    public const int PageSize = 25;
+
+    /// <summary>
+    /// Максимальный номер страницы, при котором смещение не переполняет int
+    /// </summary>
+    public static readonly int MaxPage = int.MaxValue / PageSize + 1;
 
     /// <summary>
     /// Получить страницу заказов с фильтром по статусу (новые сверху)
@@ -25,6 +33,11 @@ public class OrderWorkflowService(
         int page,
         CancellationToken cancellationToken = default)
     {
+        if (page < 1 || page > MaxPage)
+        {
+            throw new ArgumentOutOfRangeException(nameof(page), page, $"Номер страницы должен быть от 1 до {MaxPage}");
+        }
+
         var orders = await orderRepository.GetPageAsync(
             status,
             skip: (page - 1) * PageSize,
@@ -32,6 +45,23 @@ public class OrderWorkflowService(
             cancellationToken);
 
         return mapper.Map<IReadOnlyList<RepairOrderListItemDto>>(orders);
+    }
+
+    /// <summary>
+    /// Получить карточку заказа по идентификатору
+    /// </summary>
+    /// <returns>Карточка заказа или <c>null</c>, если заказ не найден</returns>
+    public async Task<RepairOrderDetailDto?> GetByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var order = await orderRepository.GetWithDetailsAsync(id, cancellationToken);
+        if (order is null)
+        {
+            return null;
+        }
+
+        return mapper.Map<RepairOrderDetailDto>(order);
     }
 
     /// <summary>
@@ -47,7 +77,7 @@ public class OrderWorkflowService(
         string? comment,
         CancellationToken cancellationToken = default)
     {
-        var order = await orderRepository.GetWithDetailsAsync(id, cancellationToken);
+        var order = await orderRepository.GetByIdAsync(id, cancellationToken);
         if (order is null)
         {
             return ChangeStatusResult.NotFound;
@@ -57,7 +87,7 @@ public class OrderWorkflowService(
         {
             order.ChangeStatus(status, comment);
         }
-        catch (InvalidOperationException)
+        catch (InvalidStatusTransitionException)
         {
             return ChangeStatusResult.InvalidTransition;
         }

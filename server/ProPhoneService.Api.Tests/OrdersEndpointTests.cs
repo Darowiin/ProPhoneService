@@ -51,6 +51,8 @@ public class OrdersEndpointTests
 
         public Dictionary<Guid, Device> Devices { get; set; } = [];
 
+        public Dictionary<Guid, Client> Clients { get; set; } = [];
+
         public WebApplicationFactory<Program> CreateFactory()
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
@@ -78,6 +80,22 @@ public class OrdersEndpointTests
                             }
 
                             return page;
+                        });
+
+                    repository
+                        .Setup(r => r.GetWithDetailsAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync((Guid id, CancellationToken _) =>
+                        {
+                            var order = Orders.FirstOrDefault(o => o.Id == id);
+                            if (order is null)
+                            {
+                                return null;
+                            }
+
+                            order.Device = Devices.GetValueOrDefault(order.DeviceId);
+                            order.Client = Clients.GetValueOrDefault(order.ClientId);
+
+                            return order;
                         });
 
                     services.RemoveAll<IRepairOrderRepository>();
@@ -160,6 +178,80 @@ public class OrdersEndpointTests
         var response = await client.GetAsync("/api/orders?page=0");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetPage_PageBeyondIntOverflow_Returns400()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient();
+
+        // Граница переполнения (page-1)*25 > int.MaxValue: page 85 899 347 даёт отрицательный skip
+        var response = await client.GetAsync("/api/orders?page=85899347");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetById_ExistingOrder_Returns200WithFullCard()
+    {
+        var clientEntity = new Client { Id = Guid.NewGuid(), Name = "Иван", Phone = "+79001234567", Email = "ivan@example.com" };
+        var device = new Device { Id = Guid.NewGuid(), Type = DeviceType.Phone, Manufacturer = "Apple", Model = "iPhone 13" };
+        var order = RepairOrder.Create(clientEntity.Id, device.Id, new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc));
+        while (order.Status != RepairStatus.InProgress)
+        {
+            order.ChangeStatus(RepairStatusTransitions.GetAllowed(order.Status!.Value).First());
+        }
+
+        order.TotalPrice = 2700m;
+        var svcCharging = new Service { Id = Guid.NewGuid(), Name = "Замена разъема зарядки", Price = 1200m, IsActive = true };
+        var svcBattery = new Service { Id = Guid.NewGuid(), Name = "Замена аккумулятора", Price = 1500m, IsActive = true };
+        order.Services.Add(new RepairOrderService { RepairOrderId = order.Id, ServiceId = svcCharging.Id, Price = 1200m, Service = svcCharging });
+        order.Services.Add(new RepairOrderService { RepairOrderId = order.Id, ServiceId = svcBattery.Id, Price = 1500m, Service = svcBattery });
+
+        var source = new OrderSource
+        {
+            Orders = [order],
+            Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
+            Clients = new Dictionary<Guid, Client> { [order.ClientId] = clientEntity },
+        };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/orders/{order.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var card = await response.Content.ReadFromJsonAsync<RepairOrderDetailDto>(_jsonOptions);
+        Assert.NotNull(card);
+        Assert.Equal(order.Id, card.Id);
+        Assert.Equal(RepairStatus.InProgress, card.Status);
+        Assert.Equal("iPhone 13", card.Device.Model);
+
+        // Клиент из карточки
+        Assert.Equal("Иван", card.Client.Name);
+        Assert.Equal("+79001234567", card.Client.Phone);
+        Assert.Equal("ivan@example.com", card.Client.Email);
+
+        // Услуги с зафиксированными ценами
+        Assert.Equal(2, card.Services.Count);
+        Assert.Contains(card.Services, s => s.Name == "Замена разъема зарядки" && s.Price == 1200m);
+        Assert.Contains(card.Services, s => s.Name == "Замена аккумулятора" && s.Price == 1500m);
+        Assert.Equal(2700m, card.TotalPrice);
+
+        // Тайм-лайн хронологичен
+        Assert.Equal(RepairStatus.Created, card.StatusTimeline[0].Status);
+        Assert.Equal(RepairStatus.InProgress, card.StatusTimeline[^1].Status);
+    }
+
+    [Fact]
+    public async Task GetById_UnknownOrder_Returns404()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/api/orders/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

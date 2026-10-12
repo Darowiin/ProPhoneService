@@ -6,7 +6,9 @@ namespace ProPhoneService.Application.Contracts;
 /// <param name="Type">Тип устройства</param>
 /// <param name="Manufacturer">Производитель</param>
 /// <param name="Model">Модель</param>
+/// <param name="SerialNumber">Серийный номер (может отсутствовать)</param>
 public record DeviceDto(
     string Type,
     string Manufacturer,
-    string Model);
+    string Model,
+    string? SerialNumber);

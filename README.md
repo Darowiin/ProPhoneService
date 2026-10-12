@@ -108,6 +108,7 @@ Created → InDiagnostic → Agreed → InProgress → Ready → Completed; от
 |-------|------|----------|
 | GET | `/api/services` | прайс-лист активных услуг (HybridCache, 5 мин) |
 | GET | `/api/orders?status=&page=` | страница заявок панели мастера (фильтр по статусу, пагинация) |
+| GET | `/api/orders/{id}` | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов |
 | POST | `/api/orders` | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
 | PATCH | `/api/orders/{id}/status` | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
 

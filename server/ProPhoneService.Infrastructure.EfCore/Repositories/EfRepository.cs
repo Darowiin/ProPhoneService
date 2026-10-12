@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
@@ -74,6 +75,26 @@ public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
             // Переводим EF-специфичное исключение в доменное: прикладной слой не зависит от EF Core
             throw new ConcurrencyConflictException("Сущность была изменена другим процессом", ex);
         }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            throw new UniqueConstraintViolationException("Нарушено ограничение уникальности", ex);
+        }
+    }
+
+    /// <summary>
+    /// Проверить, что цепочка исключений указывает на нарушение ограничения уникальности
+    /// </summary>
+    private static bool IsUniqueViolation(DbUpdateException ex)
+    {
+        for (var current = (Exception?)ex; current is not null; current = current.InnerException)
+        {
+            if (current is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
