@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.TestHost;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -125,5 +126,183 @@ public class ServicesEndpointTests
         Assert.Single(freshList!);
         Assert.Equal("Срочный ремонт", freshList![0].Name);
         Assert.Equal(9999m, freshList[0].Price);
+    }
+
+    /// <summary>
+    /// Хранилище услуг для CRUD-тестов: mock-репозиторий, хранящий состояние между вызовами
+    /// </summary>
+    private class ServiceStore
+    {
+        private static Service CloneService(Service s) => new()
+        {
+            Id = s.Id,
+            Name = s.Name,
+            Description = s.Description,
+            Price = s.Price,
+            IsActive = s.IsActive,
+        };
+
+        public List<Service> Services { get; set; } = [];
+
+        public Service? CreatedService { get; private set; }
+
+        public List<Service> UpdatedServices { get; } = [];
+
+        public WebApplicationFactory<Program> CreateFactory()
+        {
+            Services = [.. Services.Select(CloneService)];
+
+            return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            {
+                host.ConfigureTestServices(services =>
+                {
+                    var repository = new Mock<IServiceRepository>();
+                    repository
+                        .Setup(r => r.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync((Guid id, CancellationToken _) => Services.FirstOrDefault(s => s.Id == id));
+
+                    repository
+                        .Setup(r => r.AddAsync(It.IsAny<Service>(), It.IsAny<CancellationToken>()))
+                        .Callback((Service s, CancellationToken _) =>
+                        {
+                            Services.Add(s);
+                            CreatedService = s;
+                        })
+                        .Returns(Task.CompletedTask);
+
+                    repository
+                        .Setup(r => r.Update(It.IsAny<Service>()))
+                        .Callback((Service s) =>
+                        {
+                            UpdatedServices.Add(s);
+                            var index = Services.FindIndex(x => x.Id == s.Id);
+                            if (index >= 0)
+                            {
+                                Services[index] = s;
+                            }
+                        });
+
+                    repository
+                        .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(1);
+
+                    services.RemoveAll<IServiceRepository>();
+                    services.AddScoped(_ => repository.Object);
+                });
+            });
+        }
+    }
+
+    [Fact]
+    public async Task Create_ValidService_Returns201WithDto()
+    {
+        var store = new ServiceStore();
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/services", new
+        {
+            name = "Замена стекла",
+            description = "Стекло и рамка",
+            price = 900m,
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var dto = await response.Content.ReadFromJsonAsync<ServiceDto>();
+        Assert.NotNull(dto);
+        Assert.NotEqual(Guid.Empty, dto.Id);
+        Assert.Equal("Замена стекла", dto.Name);
+        Assert.Equal("Стекло и рамка", dto.Description);
+        Assert.Equal(900m, dto.Price);
+
+        // Услуга прошла через вставку репозитория
+        Assert.NotNull(store.CreatedService);
+    }
+
+    [Fact]
+    public async Task Update_ExistingService_Returns200WithUpdatedDto()
+    {
+        var store = new ServiceStore { Services = [.. _seedServices] };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var target = _seedServices[0];
+        var response = await client.PutAsJsonAsync($"/api/services/{target.Id}", new
+        {
+            name = target.Name,
+            description = "Диагностика устройства перед ремонтом",
+            price = 700m,
+        });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var dto = await response.Content.ReadFromJsonAsync<ServiceDto>();
+        Assert.NotNull(dto);
+        Assert.Equal(target.Id, dto.Id);
+        Assert.Equal(700m, dto.Price);
+        Assert.Equal("Диагностика устройства перед ремонтом", dto.Description);
+
+        var updated = Assert.Single(store.UpdatedServices);
+        Assert.Equal(700m, updated.Price);
+    }
+
+    [Fact]
+    public async Task Update_UnknownService_Returns404()
+    {
+        using var factory = new ServiceStore().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PutAsJsonAsync($"/api/services/{Guid.NewGuid()}", new
+        {
+            name = "Тест",
+            price = 500m,
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Hide_ExistingService_SoftDeletesViaIsActive()
+    {
+        var store = new ServiceStore { Services = [.. _seedServices] };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var target = _seedServices[1]; // активная услуга
+        Assert.True(target.IsActive);
+
+        var response = await client.DeleteAsync($"/api/services/{target.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var mutated = Assert.Single(store.UpdatedServices);
+        Assert.False(mutated.IsActive);
+    }
+
+    [Fact]
+    public async Task Hide_UnknownService_Returns404()
+    {
+        using var factory = new ServiceStore().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.DeleteAsync($"/api/services/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_NegativePrice_Returns400WithPriceError()
+    {
+        using var factory = new ServiceStore().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/services", new
+        {
+            name = "Тест",
+            price = -100m,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var problem = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.NotNull(problem);
+        Assert.True(problem.RootElement.TryGetProperty("errors", out var errors) && errors.TryGetProperty("Price", out _));
     }
 }

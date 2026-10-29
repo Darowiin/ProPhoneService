@@ -41,6 +41,12 @@ public class Service : IEntity
     public bool IsActive { get; set; }
 
     /// <summary>
+    /// Момент последней правки услуги (UTC, штампует AuditInterceptor)
+    /// </summary>
+    [Column("updated_at")]
+    public DateTime UpdatedAt { get; set; }
+
+    /// <summary>
     /// Заказы, в которые входит услуга
     /// </summary>
     public List<RepairOrderService> RepairOrders { get; set; } = [];

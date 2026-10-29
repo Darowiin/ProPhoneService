@@ -54,6 +54,10 @@ public class AuditInterceptor(TimeProvider timeProvider) : SaveChangesIntercepto
                 {
                     property.CurrentValue = now;
                 }
+                else if (property.Metadata.Name == nameof(Service.UpdatedAt) && entry.Entity is Service)
+                {
+                    property.CurrentValue = now;
+                }
             }
         }
     }

@@ -252,6 +252,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("price");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IsActive");
@@ -264,70 +268,80 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e01"),
                             IsActive = true,
                             Name = "Диагностика (выявление неисправности)",
-                            Price = 0m
+                            Price = 0m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e02"),
                             IsActive = true,
                             Name = "Замена дисплейного модуля",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e03"),
                             IsActive = true,
                             Name = "Замена разъема зарядки",
-                            Price = 1200m
+                            Price = 1200m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e04"),
                             IsActive = true,
                             Name = "Замена аккумулятора",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e05"),
                             IsActive = true,
                             Name = "Замена микрофона",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e06"),
                             IsActive = true,
                             Name = "Замена динамика",
-                            Price = 1100m
+                            Price = 1100m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e07"),
                             IsActive = true,
                             Name = "Замена кнопки",
-                            Price = 1200m
+                            Price = 1200m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e08"),
                             IsActive = true,
                             Name = "Замена камеры",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e09"),
                             IsActive = true,
                             Name = "Профилактика",
-                            Price = 1000m
+                            Price = 1000m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e10"),
                             IsActive = true,
                             Name = "Чистка сеток и разъемов",
-                            Price = 700m
+                            Price = 700m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         });
                 });
 

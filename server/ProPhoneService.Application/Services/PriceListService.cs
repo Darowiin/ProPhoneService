@@ -1,6 +1,7 @@
 using MapsterMapper;
 using Microsoft.Extensions.Caching.Hybrid;
 using ProPhoneService.Application.Contracts;
+using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 
 namespace ProPhoneService.Application.Services;
@@ -48,6 +49,75 @@ public class PriceListService(
     public ValueTask InvalidateAsync(CancellationToken cancellationToken = default)
     {
         return cache.RemoveByTagAsync(CacheTag, cancellationToken);
+    }
+
+    /// <summary>
+    /// Создать услугу прайс-листа (Для мастера)
+    /// </summary>
+    public async Task<ServiceDto> CreateAsync(
+        ServiceUpsertRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var service = new Service
+        {
+            Id = Guid.NewGuid(),
+            Name = request.Name,
+            Description = request.Description,
+            Price = request.Price,
+            IsActive = true,
+        };
+
+        await serviceRepository.AddAsync(service, cancellationToken);
+        await serviceRepository.SaveChangesAsync(cancellationToken);
+
+        return mapper.Map<ServiceDto>(service);
+    }
+
+    /// <summary>
+    /// Обновить услугу прайс-листа (Для мастера)
+    /// </summary>
+    /// <returns>Обновлённая услуга или <c>null</c>, если не найдена</returns>
+    public async Task<ServiceDto?> UpdateAsync(
+        Guid id,
+        ServiceUpsertRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var service = await serviceRepository.GetByIdAsync(id, cancellationToken);
+        if (service is null)
+        {
+            return null;
+        }
+
+        service.Name = request.Name;
+        service.Description = request.Description;
+        service.Price = request.Price;
+        serviceRepository.Update(service);
+
+        await serviceRepository.SaveChangesAsync(cancellationToken);
+
+        return mapper.Map<ServiceDto>(service);
+    }
+
+    /// <summary>
+    /// Скрыть услугу из прайс-листа (Для мастера). Реальное удаление не применяется - скрытие
+    /// </summary>
+    /// <returns><c>true</c>, если услуга найдена и скрыта; <c>false</c>, если не найдена</returns>
+    public async Task<bool> HideAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var service = await serviceRepository.GetByIdAsync(id, cancellationToken);
+        if (service is null)
+        {
+            return false;
+        }
+
+        service.IsActive = false;
+        serviceRepository.Update(service);
+
+        await serviceRepository.SaveChangesAsync(cancellationToken);
+
+        return true;
     }
 
     private async Task<ServiceDto[]> LoadAsync(CancellationToken cancellationToken)
