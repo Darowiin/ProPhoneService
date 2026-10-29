@@ -44,7 +44,7 @@ public class PriceListService(
     }
 
     /// <summary>
-    /// Сбросить кэш прайс-листа (вызывается после правки услуг)
+    /// Сбросить кэш прайс-листа (вызывается после создания, правки и soft-delete услуги)
     /// </summary>
     public ValueTask InvalidateAsync(CancellationToken cancellationToken = default)
     {
@@ -69,6 +69,7 @@ public class PriceListService(
 
         await serviceRepository.AddAsync(service, cancellationToken);
         await serviceRepository.SaveChangesAsync(cancellationToken);
+        await InvalidateAsync(cancellationToken);
 
         return mapper.Map<ServiceDto>(service);
     }
@@ -94,6 +95,7 @@ public class PriceListService(
         serviceRepository.Update(service);
 
         await serviceRepository.SaveChangesAsync(cancellationToken);
+        await InvalidateAsync(cancellationToken);
 
         return mapper.Map<ServiceDto>(service);
     }
@@ -116,6 +118,7 @@ public class PriceListService(
         serviceRepository.Update(service);
 
         await serviceRepository.SaveChangesAsync(cancellationToken);
+        await InvalidateAsync(cancellationToken);
 
         return true;
     }
