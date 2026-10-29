@@ -47,6 +47,8 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     /// <inheritdoc />
     public async Task<IReadOnlyList<RepairOrder>> GetPageAsync(
         RepairStatus? status,
+        DateTime? visitFrom,
+        DateTime? visitTo,
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default)
@@ -58,6 +60,8 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
             .Include(x => x.Device)
             .Include(x => x.StatusHistory)
             .Where(x => status == null || x.Status == status)
+            .Where(x => visitFrom == null || x.PreferredVisitAt >= visitFrom)
+            .Where(x => visitTo == null || x.PreferredVisitAt <= visitTo)
             .OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
             .Skip(skip)

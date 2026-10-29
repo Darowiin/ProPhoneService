@@ -45,6 +45,18 @@ public class OrdersEndpointTests
         return (order, device);
     }
 
+    /// <summary>
+    /// Заказ с устройством и заданной желаемой датой визита (для фильтра по preferred_visit_at)
+    /// </summary>
+    private static (RepairOrder Order, Device Device) MakeOrderWithVisit(RepairStatus status, DateTime? preferredVisitAt)
+    {
+        var (order, device) = MakeOrderWithDevice(status, DateTime.UtcNow);
+
+        typeof(RepairOrder).GetProperty(nameof(RepairOrder.PreferredVisitAt))!.SetValue(order, preferredVisitAt);
+
+        return (order, device);
+    }
+
     private class OrderSource
     {
         public List<RepairOrder> Orders { get; set; } = [];
@@ -63,13 +75,18 @@ public class OrdersEndpointTests
                     repository
                         .Setup(r => r.GetPageAsync(
                             It.IsAny<RepairStatus?>(),
+                            It.IsAny<DateTime?>(),
+                            It.IsAny<DateTime?>(),
                             It.IsAny<int>(),
                             It.IsAny<int>(),
                             It.IsAny<CancellationToken>()))
-                        .ReturnsAsync((RepairStatus? status, int skip, int take, CancellationToken _) =>
+                        .ReturnsAsync((RepairStatus? status, DateTime? visitFrom, DateTime? visitTo, int skip, int take, CancellationToken _) =>
                         {
                             IEnumerable<RepairOrder> query = Orders
                                 .Where(o => status == null || o.Status == status)
+                                .Where(o => (visitFrom == null && visitTo == null) || (o.PreferredVisitAt != null
+                                    && (visitFrom == null || o.PreferredVisitAt >= visitFrom)
+                                    && (visitTo == null || o.PreferredVisitAt <= visitTo)))
                                 .OrderByDescending(o => o.CreatedAt)
                                 .ThenByDescending(o => o.Id);
 
@@ -252,6 +269,74 @@ public class OrdersEndpointTests
         var response = await client.GetAsync($"/api/orders/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitDateRange_Returns200WithOnlyOrdersInRange()
+    {
+        var (oldOrder, oldDevice) = MakeOrderWithVisit(RepairStatus.Created, new DateTime(2026, 10, 1, 10, 0, 0, DateTimeKind.Utc));
+        var (newOrder, newDevice) = MakeOrderWithVisit(RepairStatus.Agreed, new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc));
+        var source = new OrderSource
+        {
+            Orders = [oldOrder, newOrder],
+            Devices = new Dictionary<Guid, Device> { [oldOrder.DeviceId] = oldDevice, [newOrder.DeviceId] = newDevice },
+        };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-10-01T00:00:00Z&visitTo=2026-10-05T23:59:59Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        var item = Assert.Single(items);
+        Assert.Equal(oldOrder.Id, item.Id);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitDateWithoutRange_Returns200ForNullVisit()
+    {
+        // Заказ без желаемой даты визита не должен пропадать, если фильтр по датам не задан
+        var (order, device) = MakeOrderWithVisit(RepairStatus.Created, null);
+        var source = new OrderSource
+        {
+            Orders = [order],
+            Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
+        };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        Assert.Single(items);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitDateEmptyRange_Returns200WithEmptyArray()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-11-01T00:00:00Z&visitTo=2026-11-02T23:59:59Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitFromLaterThanVisitTo_Returns400()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-10-05T00:00:00Z&visitTo=2026-10-01T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]

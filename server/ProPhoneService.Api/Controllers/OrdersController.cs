@@ -15,15 +15,19 @@ namespace ProPhoneService.Api.Controllers;
 public class OrdersController(OrderWorkflowService ordersService, OrderCreationService orderCreationService) : ControllerBase
 {
     /// <summary>
-    /// Получить страницу заказов с фильтром по статусу (новые сверху)
+    /// Получить страницу заказов с фильтрами по статусу и диапазону желаемой даты визита (новые сверху)
     /// </summary>
-    /// <param name="status">Фильтр по статусу; без параметра — все заказы</param>
+    /// <param name="status">Фильтр по статусу; без параметра - все заказы</param>
+    /// <param name="visitFrom">Начало диапазона по желаемой дате визита (UTC ISO 8601; необязательно)</param>
+    /// <param name="visitTo">Конец диапазона по желаемой дате визита (UTC ISO 8601, включительно; необязательно)</param>
     /// <param name="page">Номер страницы, начиная с 1 (по умолчанию 1)</param>
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<RepairOrderListItemDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<IReadOnlyList<RepairOrderListItemDto>>> GetPage(
         [FromQuery] RepairStatus? status = null,
+        [FromQuery] DateTimeOffset? visitFrom = null,
+        [FromQuery] DateTimeOffset? visitTo = null,
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
@@ -36,7 +40,21 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
             });
         }
 
-        var pageItems = await ordersService.GetPageAsync(status, page, cancellationToken);
+        if (visitFrom is not null && visitTo is not null && visitFrom > visitTo)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Некорректный диапазон дат",
+                Detail = "Параметр visitFrom должен быть не позже параметра visitTo",
+            });
+        }
+
+        var pageItems = await ordersService.GetPageAsync(
+            status,
+            visitFrom?.UtcDateTime,
+            visitTo?.UtcDateTime,
+            page,
+            cancellationToken);
 
         return Ok(pageItems);
     }

@@ -24,12 +24,16 @@ public class OrderWorkflowService(
     public static readonly int MaxPage = int.MaxValue / PageSize + 1;
 
     /// <summary>
-    /// Получить страницу заказов с фильтром по статусу (новые сверху)
+    /// Получить страницу заказов с фильтрами по статусу и диапазону желаемой даты визита (новые сверху)
     /// </summary>
     /// <param name="status">Статус для фильтра или <c>null</c> - все заказы</param>
+    /// <param name="visitFrom">Начало диапазона по желаемой дате визита (UTC, необязательно)</param>
+    /// <param name="visitTo">Конец диапазона по желаемой дате визита (UTC, включительно, необязательно)</param>
     /// <param name="page">Номер страницы (с 1)</param>
     public async Task<IReadOnlyList<RepairOrderListItemDto>> GetPageAsync(
         RepairStatus? status,
+        DateTime? visitFrom,
+        DateTime? visitTo,
         int page,
         CancellationToken cancellationToken = default)
     {
@@ -40,6 +44,8 @@ public class OrderWorkflowService(
 
         var orders = await orderRepository.GetPageAsync(
             status,
+            visitFrom,
+            visitTo,
             skip: (page - 1) * PageSize,
             take: PageSize,
             cancellationToken);
