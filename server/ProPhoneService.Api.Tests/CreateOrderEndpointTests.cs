@@ -138,6 +138,55 @@ public class CreateOrderEndpointTests
         return errors;
     }
 
+    [Fact]
+    public async Task Create_WithProblemDescription_SavesTrimmedDescription()
+    {
+        var harness = new CreateOrderHarness();
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            name = "Иван",
+            phone = "+79001234567",
+            email = (string?)null,
+            deviceType = "Phone",
+            deviceManufacturer = "Apple",
+            deviceModel = "iPhone 13",
+            preferredVisitAt = "2026-10-07T12:00:00+04:00",
+            serviceIds = Array.Empty<Guid>(),
+            problemDescription = "  Разбит экран, не реагирует на касания  ",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(harness.CreatedOrder);
+        Assert.Equal("Разбит экран, не реагирует на касания", harness.CreatedOrder.ProblemDescription);
+    }
+
+    [Fact]
+    public async Task Create_ProblemDescriptionTooLong_Returns400()
+    {
+        var harness = new CreateOrderHarness();
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", new
+        {
+            name = "Иван",
+            phone = "+79001234567",
+            email = (string?)null,
+            deviceType = "Phone",
+            deviceManufacturer = "Apple",
+            deviceModel = "iPhone 13",
+            preferredVisitAt = "2026-10-07T12:00:00+04:00",
+            serviceIds = Array.Empty<Guid>(),
+            problemDescription = new string('я', 2001),
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Null(harness.CreatedOrder);
+    }
+
     private static object ValidBody(Guid[] serviceIds) => new
     {
         name = "Иван",

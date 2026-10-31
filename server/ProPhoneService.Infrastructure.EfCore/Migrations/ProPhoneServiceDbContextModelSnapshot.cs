@@ -179,6 +179,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("preferred_visit_at");
 
+                    b.Property<string>("ProblemDescription")
+                        .HasColumnType("text")
+                        .HasColumnName("problem_description");
+
                     b.Property<string>("Status")
                         .HasColumnType("text")
                         .HasColumnName("status");

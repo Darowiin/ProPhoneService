@@ -106,7 +106,8 @@ public class OrderCreationService(
             var order = RepairOrder.Create(
                 client.Id,
                 device.Id,
-                preferredVisitAtUtc);
+                preferredVisitAtUtc,
+                string.IsNullOrWhiteSpace(request.ProblemDescription) ? null : request.ProblemDescription.Trim());
             order.TotalPrice = totalPrice;
 
             foreach (var service in selectedServices)

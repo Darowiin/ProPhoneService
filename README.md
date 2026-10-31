@@ -74,7 +74,7 @@ npm run lint
 |------------------------|------------|
 | `client`               | клиенты (uuid PK, name, phone, email, created_at) |
 | `device`               | техника (type, manufacturer, model, serial_number) |
-| `repair_order`         | заказ на ремонт (FK client_id, device_id; status, total_price, preferred_visit_at, created_at) |
+| `repair_order`         | заказ на ремонт (FK client_id, device_id; status, total_price, problem_description, preferred_visit_at, created_at) |
 | `repair_status_history`| история смены статусов заказа (status, changed_at, comment, changed_by - аккаунт мастера) |
 | `repair_order_service` | связка заказ↔услуга (FK repair_order_id, service_id; price) |
 | `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
@@ -118,7 +118,7 @@ Created → InDiagnostic → Agreed → InProgress → Ready → Completed; от
 | POST/PUT/DELETE | `/api/services...` | Master | правка прайса (скрытие - `is_active=false`) |
 | GET | `/api/orders?status=&visitFrom=&visitTo=&page=` | Master | страница заявок панели мастера (фильтр по статусу и желаемой дате визита, пагинация) |
 | GET | `/api/orders/{id}` | Client (свой) / Master | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов; чужой заказ - 404 |
-| POST | `/api/orders` | публично | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
+| POST | `/api/orders` | публично | создание заявки (клиент find-or-create по телефону/email, описание проблемы до 2000 символов, 201 + номер) |
 | PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
 | POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
 | POST | `/api/auth/confirm` | публично | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |

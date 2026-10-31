@@ -11,6 +11,7 @@ namespace ProPhoneService.Application.Contracts;
 /// <param name="Client">Клиент, оформивший заказ</param>
 /// <param name="Services">Услуги, включённые в заказ</param>
 /// <param name="TotalPrice">Итоговая стоимость ремонта, руб</param>
+/// <param name="ProblemDescription">Описание проблемы со слов клиента (может отсутствовать)</param>
 /// <param name="PreferredVisitAt">Желаемая дата и время визита (UTC, может отсутствовать)</param>
 /// <param name="CreatedAt">Дата и время создания заказа (UTC)</param>
 /// <param name="StatusTimeline">Тайм-лайн смены статусов заказа</param>
@@ -21,6 +22,7 @@ public record RepairOrderDetailDto(
     ClientDto Client,
     IReadOnlyList<RepairOrderServiceDto> Services,
     decimal TotalPrice,
+    string? ProblemDescription,
     DateTime? PreferredVisitAt,
     DateTime CreatedAt,
     IReadOnlyList<RepairStatusHistoryDto> StatusTimeline);

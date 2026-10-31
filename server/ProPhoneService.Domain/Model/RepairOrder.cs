@@ -57,6 +57,12 @@ public class RepairOrder : IEntity
     public DateTime? PreferredVisitAt { get; set; }
 
     /// <summary>
+    /// Описание проблемы со слов клиента (необязательно)
+    /// </summary>
+    [Column("problem_description")]
+    public string? ProblemDescription { get; set; }
+
+    /// <summary>
     /// Клиент, оформивший заказ
     /// </summary>
     public Client? Client { get; set; }
@@ -82,7 +88,12 @@ public class RepairOrder : IEntity
     /// <param name="clientId">Идентификатор клиента, оформившего заказ</param>
     /// <param name="deviceId">Идентификатор устройства в ремонте</param>
     /// <param name="preferredVisitAt">Предпочитаемая дата и время визита клиента (UTC, необязательно)</param>
-    public static RepairOrder Create(Guid clientId, Guid deviceId, DateTime? preferredVisitAt = null)
+    /// <param name="problemDescription">Описание проблемы со слов клиента (необязательно)</param>
+    public static RepairOrder Create(
+        Guid clientId,
+        Guid deviceId,
+        DateTime? preferredVisitAt = null,
+        string? problemDescription = null)
     {
         var order = new RepairOrder
         {
@@ -90,6 +101,7 @@ public class RepairOrder : IEntity
             ClientId = clientId,
             DeviceId = deviceId,
             PreferredVisitAt = preferredVisitAt,
+            ProblemDescription = problemDescription,
         };
 
         order.Start();

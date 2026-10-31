@@ -222,6 +222,7 @@ public class OrdersEndpointTests
         }
 
         order.TotalPrice = 2700m;
+        order.ProblemDescription = "Не заряжается и греется";
         var svcCharging = new Service { Id = Guid.NewGuid(), Name = "Замена разъема зарядки", Price = 1200m, IsActive = true };
         var svcBattery = new Service { Id = Guid.NewGuid(), Name = "Замена аккумулятора", Price = 1500m, IsActive = true };
         order.Services.Add(new RepairOrderService { RepairOrderId = order.Id, ServiceId = svcCharging.Id, Price = 1200m, Service = svcCharging });
@@ -255,6 +256,7 @@ public class OrdersEndpointTests
         Assert.Contains(card.Services, s => s.Name == "Замена разъема зарядки" && s.Price == 1200m);
         Assert.Contains(card.Services, s => s.Name == "Замена аккумулятора" && s.Price == 1500m);
         Assert.Equal(2700m, card.TotalPrice);
+        Assert.Equal("Не заряжается и греется", card.ProblemDescription);
 
         // Тайм-лайн хронологичен
         Assert.Equal(RepairStatus.Created, card.StatusTimeline[0].Status);
