@@ -95,7 +95,8 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ProPhoneServiceDbContext>();
 
-    if (app.Environment.IsDevelopment())
+    // Автомиграции в Development; Database__MigrateOnStartup=false отключает (тесты)
+    if (app.Environment.IsDevelopment() && builder.Configuration.GetValue("Database:MigrateOnStartup", true))
     {
         db.Database.Migrate();
     }

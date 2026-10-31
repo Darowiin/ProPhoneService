@@ -39,6 +39,7 @@ public class ServicesEndpointTests
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(servicesCollection =>
                 {
                     var repository = new Mock<IServiceRepository>();
@@ -156,6 +157,7 @@ public class ServicesEndpointTests
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IServiceRepository>();

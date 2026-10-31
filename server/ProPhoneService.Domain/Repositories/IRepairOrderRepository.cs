@@ -15,6 +15,13 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     Task<RepairOrder?> GetWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Получить неподтверждённые заявки с указанным контактом email (для привязки после подтверждения кода)
+    /// </summary>
+    Task<IReadOnlyList<RepairOrder>> GetPendingByEmailAsync(
+        string contactEmail,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Получить страницу заказов клиента, отсортированные по дате создания (новые сверху)
     /// </summary>
     /// <remarks>Для клиента (список заявок)</remarks>

@@ -163,9 +163,17 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("ClientId")
+                    b.Property<Guid?>("ClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
+
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_phone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -200,6 +208,8 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClientId");
+
+                    b.HasIndex("ContactEmail");
 
                     b.HasIndex("DeviceId");
 
@@ -441,8 +451,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasOne("ProPhoneService.Domain.Model.Client", "Client")
                         .WithMany("RepairOrders")
                         .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("ProPhoneService.Domain.Model.Device", "Device")
                         .WithMany("RepairOrders")

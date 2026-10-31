@@ -27,6 +27,7 @@ public class ChangeStatusEndpointTests
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();

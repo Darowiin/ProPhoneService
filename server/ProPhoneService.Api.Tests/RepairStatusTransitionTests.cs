@@ -21,10 +21,14 @@ public class RepairStatusTransitionTests
         { RepairStatus.InProgress, RepairStatus.Ready },
         { RepairStatus.InProgress, RepairStatus.Cancelled },
         { RepairStatus.Ready, RepairStatus.Completed },
+        { RepairStatus.PendingContact, RepairStatus.Created },
     };
 
     public static readonly TheoryData<RepairStatus, RepairStatus> ForbiddenTransitions = new()
     {
+        // Подтверждение контакта - единственный выход из ожидания
+        { RepairStatus.PendingContact, RepairStatus.InDiagnostic },
+        { RepairStatus.Created, RepairStatus.PendingContact },
         // Прыжки через этапы основного потока
         { RepairStatus.Created, RepairStatus.Agreed },
         { RepairStatus.Created, RepairStatus.InProgress },
@@ -154,6 +158,11 @@ public class RepairStatusTransitionTests
     /// </summary>
     private static RepairOrder CreateOrderInStatus(RepairStatus target)
     {
+        if (target == RepairStatus.PendingContact)
+        {
+            return RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null, DateTime.UtcNow.AddDays(1));
+        }
+
         var order = CreateStartedOrder();
 
         var path = new Dictionary<RepairStatus, RepairStatus[]>

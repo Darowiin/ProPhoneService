@@ -19,7 +19,7 @@ public record RepairOrderDetailDto(
     Guid Id,
     RepairStatus? Status,
     DeviceDto Device,
-    ClientDto Client,
+    ClientDto? Client,
     IReadOnlyList<RepairOrderServiceDto> Services,
     decimal TotalPrice,
     string? ProblemDescription,

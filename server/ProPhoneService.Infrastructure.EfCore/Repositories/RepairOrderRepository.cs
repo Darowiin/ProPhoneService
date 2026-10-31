@@ -26,6 +26,17 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<RepairOrder>> GetPendingByEmailAsync(
+        string contactEmail,
+        CancellationToken cancellationToken = default)
+    {
+        // Без AsNoTracking: после подтверждения кодом заявки привязываются к клиенту
+        return await Set
+            .Where(x => x.Status == RepairStatus.PendingContact && x.ContactEmail == contactEmail)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<RepairOrder>> GetAllByClientIdAsync(
         Guid clientId,
         int skip = 0,
@@ -59,6 +70,8 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
             .AsNoTracking()
             .Include(x => x.Device)
             .Include(x => x.StatusHistory)
+            // Неподтверждённая заявка в панель мастера не попадает
+            .Where(x => x.Status == null || x.Status != RepairStatus.PendingContact)
             .Where(x => status == null || x.Status == status)
             .Where(x => visitFrom == null || x.PreferredVisitAt >= visitFrom)
             .Where(x => visitTo == null || x.PreferredVisitAt <= visitTo)

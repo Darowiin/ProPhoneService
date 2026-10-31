@@ -1,21 +1,23 @@
 using Microsoft.Extensions.Options;
 using ProPhoneService.Application.Contracts;
-using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Services;
 using ProPhoneService.Domain.Shared;
+using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Создание заявки на ремонт: клиент + устройство + заказ + выбранные услуги
+/// Создание заявки на ремонт: устройство + заказ + выбранные услуги.
+/// Без входа заявка создаётся неподтверждённой (<see cref="RepairStatus.PendingContact"/>)
+/// и активируется кодом на email; авторизованный клиент привязывается сразу
 /// </summary>
 public class OrderCreationService(
-    IClientRepository clientRepository,
     IRepository<Device> deviceRepository,
     IServiceRepository serviceRepository,
     IRepairOrderRepository orderRepository,
+    AuthService authService,
     TimeProvider timeProvider,
     IOptions<WorkshopOptions> workshopOptions)
 {
@@ -23,9 +25,11 @@ public class OrderCreationService(
     /// Создать заявку на ремонт
     /// </summary>
     /// <param name="request">Данные заявки</param>
-    /// <returns>Номер заявки или ошибки валидации по полям</returns>
+    /// <param name="clientId">Клиент из токена или <c>null</c> для гостевой заявки</param>
+    /// <returns>Номер заявки (с признаком ожидания кода) или ошибки валидации по полям</returns>
     public async Task<CreateOrderResult> CreateAsync(
         CreateOrderRequest request,
+        Guid? clientId,
         CancellationToken cancellationToken = default)
     {
         var errors = new Dictionary<string, string[]>();
@@ -41,12 +45,21 @@ public class OrderCreationService(
             errors["PreferredVisitAt"] = [visitError];
         }
 
-        // Контакт: телефон или email обязательно
-        var hasPhone = !string.IsNullOrWhiteSpace(request.Phone);
-        var hasEmail = !string.IsNullOrWhiteSpace(request.Email);
-        if (!hasPhone && !hasEmail)
+        // Гостевую заявку подтверждают кодом на email: без email её не активировать
+        var isGuest = clientId is null;
+        var contactEmail = request.Email;
+        if (isGuest)
         {
-            errors["Phone"] = ["Укажите телефон или email"];
+            if (EmailNormalizer.TryNormalize(request.Email, out var normalizedEmail))
+            {
+                contactEmail = normalizedEmail;
+            }
+            else
+            {
+                errors["Email"] = [string.IsNullOrWhiteSpace(request.Email)
+                    ? "Укажите email - на него придёт код подтверждения заявки"
+                    : "Некорректный email"];
+            }
         }
 
         decimal totalPrice = 0;
@@ -72,75 +85,57 @@ public class OrderCreationService(
             return CreateOrderResult.Failure(errors);
         }
 
-        // Устройство и заявка пересоздаются на повторе: после неудачного сохранения
-        // конфликтную вставку клиента нужно отвязать (Remove на сущности в состоянии Added отцепляет её)
-        const int maxAttempts = 2;
-        for (var attempt = 1; ; attempt++)
+        var problemDescription = string.IsNullOrWhiteSpace(request.ProblemDescription)
+            ? null
+            : request.ProblemDescription.Trim();
+
+        var device = new Device
         {
-            // Найти клиента по телефону (приоритет) или по email; иначе создать нового
-            var existingClient = hasPhone
-                ? await clientRepository.GetByPhoneAsync(request.Phone!, cancellationToken)
-                : null;
+            Id = Guid.NewGuid(),
+            Type = request.DeviceType!.Value,
+            Manufacturer = request.DeviceManufacturer,
+            Model = request.DeviceModel,
+        };
 
-            if (existingClient is null && hasEmail)
-            {
-                existingClient = await clientRepository.GetByEmailAsync(request.Email!, cancellationToken);
-            }
-
-            var client = existingClient ?? new Client
-            {
-                Id = Guid.NewGuid(),
-                Name = request.Name,
-                Phone = request.Phone,
-                Email = request.Email,
-            };
-
-            var device = new Device
-            {
-                Id = Guid.NewGuid(),
-                Type = request.DeviceType!.Value,
-                Manufacturer = request.DeviceManufacturer,
-                Model = request.DeviceModel,
-            };
-
-            var order = RepairOrder.Create(
-                client.Id,
+        var order = isGuest
+            ? RepairOrder.CreatePending(
+                device.Id,
+                contactEmail!,
+                request.Phone,
+                preferredVisitAtUtc,
+                problemDescription)
+            : RepairOrder.Create(
+                clientId!.Value,
                 device.Id,
                 preferredVisitAtUtc,
-                string.IsNullOrWhiteSpace(request.ProblemDescription) ? null : request.ProblemDescription.Trim());
-            order.TotalPrice = totalPrice;
+                problemDescription);
 
-            foreach (var service in selectedServices)
-            {
-                order.Services.Add(new RepairOrderService
-                {
-                    RepairOrderId = order.Id,
-                    ServiceId = service.Id,
-                    Price = service.Price,
-                });
-            }
+        // Контакты из формы сохраняем и у авторизованной заявки (для связи)
+        order.ContactEmail ??= contactEmail;
+        order.ContactPhone ??= request.Phone;
+        order.TotalPrice = totalPrice;
 
-            if (existingClient is null)
+        foreach (var service in selectedServices)
+        {
+            order.Services.Add(new RepairOrderService
             {
-                await clientRepository.AddAsync(client, cancellationToken);
-            }
-
-            await deviceRepository.AddAsync(device, cancellationToken);
-            await orderRepository.AddAsync(order, cancellationToken);
-
-            try
-            {
-                await orderRepository.SaveChangesAsync(cancellationToken);
-                return CreateOrderResult.Success(order.Id);
-            }
-            catch (UniqueConstraintViolationException) when (existingClient is null && attempt < maxAttempts)
-            {
-                // Гонка: параллельный запрос уже вставил клиента с таким же контактом;
-                // отвязываем неудачные вставки и на следующем шаге переиспользуем победителя
-                clientRepository.Remove(client);
-                deviceRepository.Remove(device);
-                orderRepository.Remove(order);
-            }
+                RepairOrderId = order.Id,
+                ServiceId = service.Id,
+                Price = service.Price,
+            });
         }
+
+        await deviceRepository.AddAsync(device, cancellationToken);
+        await orderRepository.AddAsync(order, cancellationToken);
+        await orderRepository.SaveChangesAsync(cancellationToken);
+
+        if (isGuest)
+        {
+            // Код подтверждения уходит на email заявки через INotifier;
+            // повторный код в пределах кулдауна не отправляется, но уже отправленный действует
+            await authService.RequestCodeAsync(contactEmail, cancellationToken);
+        }
+
+        return CreateOrderResult.Success(order.Id, isGuest);
     }
 }

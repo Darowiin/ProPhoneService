@@ -51,6 +51,8 @@ public class AuthEndpointTests
 
         public List<(string Target, string Text)> Notifications { get; } = [];
 
+        public List<RepairOrder> PendingOrders { get; } = [];
+
         public List<Client> AddedClients { get; } = [];
 
         public List<Account> AddedAccounts { get; } = [];
@@ -59,6 +61,7 @@ public class AuthEndpointTests
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var authCodeRepository = new Mock<IAuthCodeRepository>();
@@ -117,6 +120,16 @@ public class AuthEndpointTests
                         })
                         .Returns(Task.CompletedTask);
 
+                    var orderRepository = new Mock<IRepairOrderRepository>();
+                    orderRepository
+                        .Setup(r => r.GetPendingByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync((string email, CancellationToken _) => PendingOrders
+                            .Where(o => o.ContactEmail == email && o.Status == RepairStatus.PendingContact)
+                            .ToList());
+                    orderRepository
+                        .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(1);
+
                     var notifier = new Mock<INotifier>();
                     notifier
                         .Setup(n => n.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
@@ -131,6 +144,8 @@ public class AuthEndpointTests
                     services.AddScoped(_ => accountRepository.Object);
                     services.RemoveAll<INotifier>();
                     services.AddScoped(_ => notifier.Object);
+                    services.RemoveAll<IRepairOrderRepository>();
+                    services.AddScoped(_ => orderRepository.Object);
                     services.RemoveAll<TimeProvider>();
                     services.AddSingleton<TimeProvider>(new FixedTimeProvider());
                 });
@@ -308,6 +323,29 @@ public class AuthEndpointTests
         Assert.Equal(existing.Id, auth!.ClientId);
         Assert.Empty(store.AddedClients);
         Assert.Single(store.AddedAccounts);
+    }
+
+    [Fact]
+    public async Task Confirm_AttachesPendingOrderAndActivatesIt()
+    {
+        var store = new AuthStore();
+        var pending = RepairOrder.CreatePending(
+            Guid.NewGuid(),
+            Email,
+            "+79001234567",
+            _nowUtc.UtcDateTime.AddDays(1),
+            "Не заряжается");
+        store.PendingOrders.Add(pending);
+        using var client = store.CreateFactory().CreateClient();
+        await RequestCode(client, Email);
+
+        var response = await Confirm(client, Email, store.AuthCodes[Email].Code);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        Assert.Equal(auth!.ClientId, pending.ClientId);
+        Assert.Equal(RepairStatus.Created, pending.Status);
+        Assert.Contains(pending.StatusHistory, h => h.Status == RepairStatus.Created);
     }
 
     [Fact]

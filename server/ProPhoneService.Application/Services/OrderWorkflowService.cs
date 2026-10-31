@@ -68,7 +68,9 @@ public class OrderWorkflowService(
         CancellationToken cancellationToken = default)
     {
         var order = await orderRepository.GetWithDetailsAsync(id, cancellationToken);
-        if (order is null || (!isMaster && order.ClientId != viewerClientId))
+        if (order is null
+            || order.Status == RepairStatus.PendingContact
+            || (!isMaster && order.ClientId != viewerClientId))
         {
             return null;
         }

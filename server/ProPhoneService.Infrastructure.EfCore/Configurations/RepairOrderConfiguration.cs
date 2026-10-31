@@ -26,6 +26,8 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
         // Составной индекс под запрос панели мастера: фильтр по статусу + сортировка по дате
         builder.HasIndex(x => new { x.Status, x.CreatedAt }).IsDescending(false, true);
         builder.HasIndex(x => x.PreferredVisitAt);
+        // Поиск неподтверждённых заявок при входе по коду
+        builder.HasIndex(x => x.ContactEmail);
 
         builder
             .HasMany(x => x.StatusHistory)

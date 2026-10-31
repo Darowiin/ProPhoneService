@@ -1,4 +1,3 @@
-using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -19,14 +18,13 @@ public class AuthService(
     IAccountRepository accountRepository,
     IClientRepository clientRepository,
     IAuthCodeRepository authCodeRepository,
+    IRepairOrderRepository orderRepository,
     INotifier notifier,
     TimeProvider timeProvider,
     AuthOptions authOptions,
     JwtOptions jwtOptions,
     IRefreshTokenStore refreshStore)
 {
-    private static readonly EmailAddressAttribute _emailValidator = new();
-
     /// <summary>
     /// Запросить одноразовый код на email (с ограничением частоты запросов)
     /// </summary>
@@ -34,7 +32,7 @@ public class AuthService(
         string? email,
         CancellationToken cancellationToken = default)
     {
-        if (!TryNormalizeEmail(email, out var normalized))
+        if (!EmailNormalizer.TryNormalize(email, out var normalized))
         {
             return AuthOutcome.Failure(400, "Некорректный email", "Укажите корректный адрес электронной почты");
         }
@@ -95,7 +93,7 @@ public class AuthService(
         string? code,
         CancellationToken cancellationToken = default)
     {
-        if (!TryNormalizeEmail(email, out var normalized))
+        if (!EmailNormalizer.TryNormalize(email, out var normalized))
         {
             return AuthOutcome.Failure(400, "Некорректный email", "Укажите корректный адрес электронной почты");
         }
@@ -167,6 +165,13 @@ public class AuthService(
         if (isNewAccount)
         {
             await accountRepository.AddAsync(account, cancellationToken);
+        }
+
+        // Неподтверждённые заявки с этим email привязываем к клиенту и активируем
+        var pendingOrders = await orderRepository.GetPendingByEmailAsync(normalized, cancellationToken);
+        foreach (var pendingOrder in pendingOrders)
+        {
+            pendingOrder.ConfirmClient(client.Id);
         }
 
         // Код одноразовый: погашаем
@@ -248,17 +253,4 @@ public class AuthService(
         return RandomNumberGenerator.GetInt32(1_000_000).ToString("D6");
     }
 
-    private static bool TryNormalizeEmail(string? email, out string normalized)
-    {
-        var candidate = email?.Trim().ToLowerInvariant();
-
-        if (string.IsNullOrWhiteSpace(candidate) || !_emailValidator.IsValid(candidate))
-        {
-            normalized = "";
-            return false;
-        }
-
-        normalized = candidate;
-        return true;
-    }
 }

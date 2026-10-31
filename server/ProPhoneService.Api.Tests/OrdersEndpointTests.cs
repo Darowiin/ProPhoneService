@@ -70,6 +70,7 @@ public class OrdersEndpointTests
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();
@@ -111,7 +112,7 @@ public class OrdersEndpointTests
                             }
 
                             order.Device = Devices.GetValueOrDefault(order.DeviceId);
-                            order.Client = Clients.GetValueOrDefault(order.ClientId);
+                            order.Client = order.ClientId is Guid orderClientId ? Clients.GetValueOrDefault(orderClientId) : null;
 
                             return order;
                         });
@@ -232,7 +233,7 @@ public class OrdersEndpointTests
         {
             Orders = [order],
             Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
-            Clients = new Dictionary<Guid, Client> { [order.ClientId] = clientEntity },
+            Clients = new Dictionary<Guid, Client> { [order.ClientId!.Value] = clientEntity },
         };
         using var factory = source.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -247,6 +248,7 @@ public class OrdersEndpointTests
         Assert.Equal("iPhone 13", card.Device.Model);
 
         // Клиент из карточки
+        Assert.NotNull(card.Client);
         Assert.Equal("Иван", card.Client.Name);
         Assert.Equal("+79001234567", card.Client.Phone);
         Assert.Equal("ivan@example.com", card.Client.Email);

@@ -138,6 +138,10 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <summary>
     /// Создать заявку на ремонт
     /// </summary>
+    /// <remarks>
+    /// Без токена заявка создаётся неподтверждённой (PendingContact) и активируется кодом
+    /// на email, который уходит через INotifier; с токеном клиент привязывается сразу
+    /// </remarks>
     /// <param name="request">Данные заявки</param>
     [AllowAnonymous]
     [HttpPost]
@@ -147,7 +151,11 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         [FromBody] CreateOrderRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await orderCreationService.CreateAsync(request, cancellationToken);
+        var clientId = Guid.TryParse(User.FindFirst(AuthClaims.ClientId)?.Value, out var claimClientId)
+            ? claimClientId
+            : (Guid?)null;
+
+        var result = await orderCreationService.CreateAsync(request, clientId, cancellationToken);
 
         if (!result.IsSuccess)
         {
@@ -159,6 +167,9 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
 
         var orderId = result.OrderId!.Value;
 
-        return CreatedAtAction(nameof(GetById), new { id = orderId }, new CreateOrderResponse(orderId));
+        return CreatedAtAction(
+            nameof(GetById),
+            new { id = orderId },
+            new CreateOrderResponse(orderId, result.RequiresEmailConfirmation));
     }
 }

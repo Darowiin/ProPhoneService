@@ -30,6 +30,7 @@ public class AuthorizationEndpointTests
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();
@@ -77,7 +78,7 @@ public class AuthorizationEndpointTests
                 return null;
             }
 
-            order.Client = Clients.GetValueOrDefault(order.ClientId);
+            order.Client = order.ClientId is Guid orderClientId ? Clients.GetValueOrDefault(orderClientId) : null;
             order.Device = new Device
             {
                 Id = order.DeviceId,
@@ -182,6 +183,20 @@ public class AuthorizationEndpointTests
         var response = await client.GetAsync($"/api/orders/{order.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetById_PendingOrder_MasterToken_Returns404()
+    {
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var source = new OrderSource { Orders = [pending] };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.GetAsync($"/api/orders/{pending.Id}");
+
+        // Неподтверждённая заявка не видна никому до ввода кода
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
