@@ -1,5 +1,8 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -9,6 +12,8 @@ using Moq;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
+using ProPhoneService.Domain.Shared;
+using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Api.Tests;
 
@@ -20,6 +25,12 @@ public class AuthEndpointTests
     private static readonly DateTimeOffset _nowUtc = new(2026, 10, 5, 8, 0, 0, TimeSpan.Zero);
 
     private const string Email = "ivan@example.com";
+
+    private static readonly JsonSerializerOptions _jsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     private sealed class FixedTimeProvider : TimeProvider
     {
@@ -242,11 +253,13 @@ public class AuthEndpointTests
         var response = await Confirm(client, Email, store.AuthCodes[Email].Code);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>();
+        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
         Assert.NotNull(auth);
         Assert.NotEqual(Guid.Empty, auth.AccountId);
         Assert.Equal(auth.ClientId, store.AddedClients.Single().Id);
         Assert.Equal(auth.AccountId, store.AddedAccounts.Single().Id);
+        // Новый аккаунт - клиент: панель мастера ему недоступна
+        Assert.Equal(AccountRole.Client, auth.Role);
 
         // Токены: access не пуст, refresh-cookie установлена
         Assert.False(string.IsNullOrWhiteSpace(auth.AccessToken));
@@ -261,13 +274,13 @@ public class AuthEndpointTests
         await RequestCode(client, Email);
         var first = await Confirm(client, Email, store.AuthCodes[Email].Code);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        var firstAuth = await first.Content.ReadFromJsonAsync<AuthResponse>();
+        var firstAuth = await first.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
 
         // Повторное подтверждение: новый код на тот же email
         await RequestCode(client, Email);
         var second = await Confirm(client, Email, store.AuthCodes[Email].Code);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-        var secondAuth = await second.Content.ReadFromJsonAsync<AuthResponse>();
+        var secondAuth = await second.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
 
         Assert.Equal(firstAuth!.AccountId, secondAuth!.AccountId);
         Assert.Equal(firstAuth.ClientId, secondAuth.ClientId);
@@ -291,9 +304,42 @@ public class AuthEndpointTests
         var response = await Confirm(client, Email, store.AuthCodes[Email].Code);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>();
+        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
         Assert.Equal(existing.Id, auth!.ClientId);
         Assert.Empty(store.AddedClients);
         Assert.Single(store.AddedAccounts);
+    }
+
+    [Fact]
+    public async Task Confirm_MasterEmail_IssuesMasterRoleForSeededAccount()
+    {
+        var masterClient = new Client
+        {
+            Id = Guid.NewGuid(),
+            Name = "Мастер",
+            Email = "master@prophoneservice.local",
+        };
+        var masterAccount = new Account
+        {
+            Id = Guid.NewGuid(),
+            ClientId = masterClient.Id,
+            Role = AccountRole.Master,
+        };
+        var store = new AuthStore { Clients = [masterClient], Accounts = [masterAccount] };
+        using var client = store.CreateFactory().CreateClient();
+
+        await RequestCode(client, masterClient.Email);
+        var response = await Confirm(client, masterClient.Email, store.AuthCodes[masterClient.Email].Code);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        Assert.Equal(AccountRole.Master, auth!.Role);
+        Assert.Equal(masterAccount.Id, auth.AccountId);
+        Assert.Equal(masterClient.Id, auth.ClientId);
+        Assert.Empty(store.AddedAccounts);
+        Assert.Empty(store.AddedClients);
+
+        var token = new JwtSecurityTokenHandler().ReadJwtToken(auth.AccessToken);
+        Assert.Equal("Master", Assert.Single(token.Claims, c => c.Type == AuthClaims.Role).Value);
     }
 }

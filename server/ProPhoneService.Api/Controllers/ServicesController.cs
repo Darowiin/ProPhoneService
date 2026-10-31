@@ -1,11 +1,13 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
+using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Api.Controllers;
 
 /// <summary>
-/// Прайс-лист мастерской
+/// Прайс-лист мастерской: чтение - публичное, правка - только мастер
 /// </summary>
 [ApiController]
 [Route("api/services")]
@@ -15,6 +17,7 @@ public class ServicesController(PriceListService priceList) : ControllerBase
     /// Получить активные услуги прайс-листа
     /// </summary>
     /// <remarks>Список кэшируется на 5 минут; кэш сбрасывается при правке прайса</remarks>
+    [AllowAnonymous]
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<ServiceDto>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<ServiceDto>>> GetAll(CancellationToken cancellationToken)
@@ -28,6 +31,7 @@ public class ServicesController(PriceListService priceList) : ControllerBase
     /// Создать услугу прайс-листа
     /// </summary>
     /// <param name="request">Данные услуги</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpPost]
     [ProducesResponseType<ServiceDto>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -45,6 +49,7 @@ public class ServicesController(PriceListService priceList) : ControllerBase
     /// </summary>
     /// <param name="id">Идентификатор услуги</param>
     /// <param name="request">Данные услуги</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpPut("{id:guid}")]
     [ProducesResponseType<ServiceDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -72,6 +77,7 @@ public class ServicesController(PriceListService priceList) : ControllerBase
     /// Скрыть услугу из прайс-листа (реальное удаление не применяется)
     /// </summary>
     /// <param name="id">Идентификатор услуги</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

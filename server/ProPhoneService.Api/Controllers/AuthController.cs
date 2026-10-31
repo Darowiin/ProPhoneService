@@ -86,6 +86,7 @@ public class AuthController(AuthService authService, AuthOptions authOptions) : 
         return Ok(new AuthResponse(
             outcome.Tokens.AccountId,
             outcome.Tokens.ClientId,
+            outcome.Tokens.Role,
             outcome.Tokens.AccessToken,
             outcome.Tokens.AccessTokenExpiresAtUtc));
     }

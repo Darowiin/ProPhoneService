@@ -69,6 +69,7 @@ public class OrdersEndpointTests
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();
@@ -133,7 +134,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [oldOrder.DeviceId] = oldDevice, [newOrder.DeviceId] = newDevice },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders");
 
@@ -164,7 +165,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [createdOrder.DeviceId] = createdDevice, [inProgressOrder.DeviceId] = inProgressDevice },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?status=InProgress");
 
@@ -179,7 +180,7 @@ public class OrdersEndpointTests
     public async Task GetPage_UnknownStatus_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?status=NotAStatus");
 
@@ -190,7 +191,7 @@ public class OrdersEndpointTests
     public async Task GetPage_InvalidPage_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?page=0");
 
@@ -201,7 +202,7 @@ public class OrdersEndpointTests
     public async Task GetPage_PageBeyondIntOverflow_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         // Граница переполнения (page-1)*25 > int.MaxValue: page 85 899 347 даёт отрицательный skip
         var response = await client.GetAsync("/api/orders?page=85899347");
@@ -233,7 +234,7 @@ public class OrdersEndpointTests
             Clients = new Dictionary<Guid, Client> { [order.ClientId] = clientEntity },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync($"/api/orders/{order.Id}");
 
@@ -264,7 +265,7 @@ public class OrdersEndpointTests
     public async Task GetById_UnknownOrder_Returns404()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync($"/api/orders/{Guid.NewGuid()}");
 
@@ -282,7 +283,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [oldOrder.DeviceId] = oldDevice, [newOrder.DeviceId] = newDevice },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?visitFrom=2026-10-01T00:00:00Z&visitTo=2026-10-05T23:59:59Z");
 
@@ -304,7 +305,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders");
 
@@ -318,7 +319,7 @@ public class OrdersEndpointTests
     public async Task GetPage_VisitDateEmptyRange_Returns200WithEmptyArray()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?visitFrom=2026-11-01T00:00:00Z&visitTo=2026-11-02T23:59:59Z");
 
@@ -332,7 +333,7 @@ public class OrdersEndpointTests
     public async Task GetPage_VisitFromLaterThanVisitTo_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?visitFrom=2026-10-05T00:00:00Z&visitTo=2026-10-01T00:00:00Z");
 
@@ -343,7 +344,7 @@ public class OrdersEndpointTests
     public async Task GetPage_EmptyResult_Returns200WithEmptyArray()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders");
 

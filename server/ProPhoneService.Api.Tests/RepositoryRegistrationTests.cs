@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using ProPhoneService.Domain.Shared.Auditing;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Infrastructure.EfCore;
@@ -14,6 +16,7 @@ public class RepositoryRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddScoped(_ => new Mock<ICurrentActor>().Object);
         services.AddDbContext<ProPhoneServiceDbContext>(options =>
             options.UseNpgsql("Host=localhost;Database=prophoneservice_test"));
         services.AddRepositories();
@@ -39,6 +42,7 @@ public class RepositoryRegistrationTests
     {
         var services = new ServiceCollection();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddScoped(_ => new Mock<ICurrentActor>().Object);
         services.AddDbContext<ProPhoneServiceDbContext>(options =>
             options.UseNpgsql("Host=localhost;Database=prophoneservice_test"));
         services.AddRepositories();

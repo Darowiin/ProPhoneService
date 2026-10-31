@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Domain.Model;
 
@@ -22,6 +23,12 @@ public class Account : IEntity
     [ForeignKey(nameof(ClientId))]
     [Column("client_id")]
     public required Guid ClientId { get; set; }
+
+    /// <summary>
+    /// Роль аккаунта: клиент или мастер (по умолчанию - клиент)
+    /// </summary>
+    [Column("role")]
+    public AccountRole Role { get; set; } = AccountRole.Client;
 
     /// <summary>
     /// Дата и время создания аккаунта (UTC)

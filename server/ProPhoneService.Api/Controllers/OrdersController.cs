@@ -1,14 +1,16 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProPhoneService.Api.Contracts;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
+using ProPhoneService.Domain.Shared;
 using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Api.Controllers;
 
 /// <summary>
-/// Заказы на ремонт (панель мастера)
+/// Заказы на ремонт: панель мастера (только Master) и карточка заказа (свой - клиенту, любой - мастеру)
 /// </summary>
 [ApiController]
 [Route("api/orders")]
@@ -21,6 +23,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <param name="visitFrom">Начало диапазона по желаемой дате визита (UTC ISO 8601; необязательно)</param>
     /// <param name="visitTo">Конец диапазона по желаемой дате визита (UTC ISO 8601, включительно; необязательно)</param>
     /// <param name="page">Номер страницы, начиная с 1 (по умолчанию 1)</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<RepairOrderListItemDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -62,7 +65,9 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <summary>
     /// Получить карточку заказа: клиент, устройство, услуги и тайм-лайн статусов
     /// </summary>
+    /// <remarks>Клиенту доступен только собственный заказ: чужой идентификатор даёт 404 (защита от IDOR)</remarks>
     /// <param name="id">Идентификатор заказа</param>
+    [Authorize]
     [HttpGet("{id:guid}")]
     [ProducesResponseType<RepairOrderDetailDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -70,7 +75,12 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var card = await ordersService.GetByIdAsync(id, cancellationToken);
+        var isMaster = User.IsInRole(nameof(AccountRole.Master));
+        var viewerClientId = Guid.TryParse(User.FindFirst(AuthClaims.ClientId)?.Value, out var claimClientId)
+            ? claimClientId
+            : (Guid?)null;
+
+        var card = await ordersService.GetByIdAsync(id, viewerClientId, isMaster, cancellationToken);
 
         if (card is null)
         {
@@ -90,6 +100,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <remarks>Запрещённый переход (перепрыгнуть этап или вернуть назад) возвращает 409</remarks>
     /// <param name="id">Идентификатор заказа</param>
     /// <param name="request">Целевой статус и комментарий</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpPatch("{id:guid}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -128,6 +139,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// Создать заявку на ремонт
     /// </summary>
     /// <param name="request">Данные заявки</param>
+    [AllowAnonymous]
     [HttpPost]
     [ProducesResponseType<CreateOrderResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]

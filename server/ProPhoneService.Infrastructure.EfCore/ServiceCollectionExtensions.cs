@@ -22,7 +22,7 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         string? connectionString = null)
     {
-        services.AddSingleton<AuditInterceptor>();
+        services.AddScoped<AuditInterceptor>();
 
         services.AddDbContext<ProPhoneServiceDbContext>((sp, options) =>
         {

@@ -34,4 +34,10 @@ public sealed class AuthOptions
     /// Минимальный интервал между запросами кода, сек
     /// </summary>
     public int RequestCodeCooldownSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Email мастерской для мастер-аккаунта: при старте ему апсертится роль Master;
+    /// пусто - мастер не заводится (задаётся через Auth__MasterEmail)
+    /// </summary>
+    public string? MasterEmail { get; set; }
 }

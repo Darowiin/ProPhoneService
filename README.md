@@ -36,6 +36,8 @@ API применяет миграции при старте в режиме ра
 
 Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
 
+`MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
+
 ### Backend без Docker
 
 ```bash
@@ -73,9 +75,11 @@ npm run lint
 | `client`               | клиенты (uuid PK, name, phone, email, created_at) |
 | `device`               | техника (type, manufacturer, model, serial_number) |
 | `repair_order`         | заказ на ремонт (FK client_id, device_id; status, total_price, preferred_visit_at, created_at) |
-| `repair_status_history`| история смены статусов заказа (status, changed_at, comment) |
+| `repair_status_history`| история смены статусов заказа (status, changed_at, comment, changed_by - аккаунт мастера) |
 | `repair_order_service` | связка заказ↔услуга (FK repair_order_id, service_id; price) |
-| `service`              | прайс-лист услуг (name, description, price, is_active) |
+| `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
+| `account`              | аккаунт входа (FK client_id 1:1; role - Client/Master, created_at) |
+| `auth_code`            | одноразовые коды входа на email (code, expires_at, failed_attempts, locked_until) |
 | `review`               | отзывы клиентов (FK client_id; rating, text, created_at) |
 
 ## Архитектура server
@@ -93,6 +97,8 @@ server/
 
 Слои направлены внутрь: `Api` -> `Application` -> `Domain`, Репозитории - generic `IRepository<T>` + специализированные, scoped lifetime, batch-сохранение через `SaveChangesAsync`
 
+Аудит "кто/когда" - `AuditInterceptor`: проставляет `CreatedAt`/`ChangedAt`/`UpdatedAt` из `TimeProvider` и аккаунт из токена (`changed_by`/`updated_by`) в том же батче, без отдельной таблицы; аккаунт запроса даёт `ICurrentActor` (реализация в API читает клейм `sub`)
+
 ## Машина состояний заказа
 
 Смена статуса - только через `RepairOrder.ChangeStatus()`, карта переходов - `RepairStatusTransitions` в `Domain.Shared`
@@ -106,16 +112,27 @@ Created → InDiagnostic → Agreed → InProgress → Ready → Completed; от
 
 ## Эндпоинты API
 
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/api/services` | прайс-лист активных услуг (HybridCache, 5 мин) |
-| GET | `/api/orders?status=&visitFrom=&visitTo=&page=` | страница заявок панели мастера (фильтр по статусу и желаемой дате визита, пагинация) |
-| GET | `/api/orders/{id}` | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов |
-| POST | `/api/orders` | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
-| PATCH | `/api/orders/{id}/status` | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
-| POST | `/api/auth/request-code` | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
-| POST | `/api/auth/confirm` | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
-| POST | `/api/auth/refresh` | ротация refresh-токена (погашенный старый отклоняется) |
+| Метод | Путь | Доступ | Описание |
+|-------|------|--------|----------|
+| GET | `/api/services` | публично | прайс-лист активных услуг (HybridCache, 5 мин) |
+| POST/PUT/DELETE | `/api/services...` | Master | правка прайса (скрытие - `is_active=false`) |
+| GET | `/api/orders?status=&visitFrom=&visitTo=&page=` | Master | страница заявок панели мастера (фильтр по статусу и желаемой дате визита, пагинация) |
+| GET | `/api/orders/{id}` | Client (свой) / Master | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов; чужой заказ - 404 |
+| POST | `/api/orders` | публично | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
+| PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
+| POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
+| POST | `/api/auth/confirm` | публично | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
+| POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
+
+## Роли и доступ
+
+В access-токене есть клеймы `sub` (аккаунт), `client_id` и `role` (`Client`/`Master`)
+
+- **Client** - личный кабинет и только собственные заказы: чужой идентификатор неотличим от несуществующего (404), чтобы не раскрывать данные
+- **Master** - панель заказов, смена статусов и правка прайса; публичный прайс читается без токена
+- Мастер-аккаунт: апсерт при старте по `Auth__MasterEmail` (роль Master, вход по коду из лога `INotifier` в демо)
+- Без токена защищённый эндпоинт - 401, с токеном без нужной роли - 403
+- Поля аудита "кто изменил" (`repair_status_history.changed_by`, `service.updated_by`) заполняет `AuditInterceptor` из `sub` текущего запроса
 
 Ошибки валидации возвращаются как `ValidationProblemDetails` со списком полей; при создании заявки обязательно должен быть телефон или почта, дата визита проверяется на рабочие часы и "не в прошлом"
 

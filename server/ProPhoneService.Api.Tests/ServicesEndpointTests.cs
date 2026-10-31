@@ -38,6 +38,7 @@ public class ServicesEndpointTests
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.ConfigureTestServices(servicesCollection =>
                 {
                     var repository = new Mock<IServiceRepository>();
@@ -60,7 +61,7 @@ public class ServicesEndpointTests
     public async Task GetAll_Returns200WithSeededServices()
     {
         using var factory = new MutablePriceSource(CurrentServices()).CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/services");
 
@@ -78,7 +79,7 @@ public class ServicesEndpointTests
     {
         var source = new MutablePriceSource(CurrentServices());
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var first = await client.GetAsync("/api/services");
         var second = await client.GetAsync("/api/services");
@@ -95,7 +96,7 @@ public class ServicesEndpointTests
     {
         var source = new MutablePriceSource(CurrentServices());
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         // Первый запрос — прогрев кэша
         var first = await client.GetAsync("/api/services");
@@ -154,6 +155,7 @@ public class ServicesEndpointTests
 
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IServiceRepository>();
@@ -205,7 +207,7 @@ public class ServicesEndpointTests
     {
         var store = new ServiceStore();
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PostAsJsonAsync("/api/services", new
         {
@@ -231,7 +233,7 @@ public class ServicesEndpointTests
     {
         var store = new ServiceStore { Services = [.. _seedServices] };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var target = _seedServices[0];
         var response = await client.PutAsJsonAsync($"/api/services/{target.Id}", new
@@ -256,7 +258,7 @@ public class ServicesEndpointTests
     public async Task Update_UnknownService_Returns404()
     {
         using var factory = new ServiceStore().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PutAsJsonAsync($"/api/services/{Guid.NewGuid()}", new
         {
@@ -272,7 +274,7 @@ public class ServicesEndpointTests
     {
         var store = new ServiceStore { Services = [.. _seedServices] };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var target = _seedServices[1]; // активная услуга
         Assert.True(target.IsActive);
@@ -288,7 +290,7 @@ public class ServicesEndpointTests
     public async Task Hide_UnknownService_Returns404()
     {
         using var factory = new ServiceStore().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.DeleteAsync($"/api/services/{Guid.NewGuid()}");
 
@@ -299,7 +301,7 @@ public class ServicesEndpointTests
     public async Task Create_NegativePrice_Returns400WithPriceError()
     {
         using var factory = new ServiceStore().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PostAsJsonAsync("/api/services", new
         {
@@ -317,7 +319,7 @@ public class ServicesEndpointTests
     public async Task Create_InvalidatesCache_NewServiceVisibleInList()
     {
         var store = new ServiceStore { Services = [.. _seedServices] };
-        using var client = store.CreateFactory().CreateClient();
+        using var client = store.CreateFactory().CreateClient().WithToken(TestJwt.ForMaster());
 
         // Прогрев кэша
         var warm = await client.GetAsync("/api/services");
@@ -342,7 +344,7 @@ public class ServicesEndpointTests
     public async Task Update_InvalidatesCache_FreshPriceVisibleInList()
     {
         var store = new ServiceStore { Services = [.. _seedServices] };
-        using var client = store.CreateFactory().CreateClient();
+        using var client = store.CreateFactory().CreateClient().WithToken(TestJwt.ForMaster());
 
         var warm = await client.GetAsync("/api/services");
 
@@ -366,7 +368,7 @@ public class ServicesEndpointTests
     public async Task Hide_InvalidatesCache_HiddenServiceGoneFromList()
     {
         var store = new ServiceStore { Services = [.. _seedServices] };
-        using var client = store.CreateFactory().CreateClient();
+        using var client = store.CreateFactory().CreateClient().WithToken(TestJwt.ForMaster());
 
         var warm = await client.GetAsync("/api/services");
         Assert.Equal(3, (await warm.Content.ReadFromJsonAsync<List<ServiceDto>>())!.Count);

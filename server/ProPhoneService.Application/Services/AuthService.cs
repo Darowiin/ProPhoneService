@@ -3,11 +3,11 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.RegularExpressions;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared;
+using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Application.Services;
 
@@ -174,7 +174,7 @@ public class AuthService(
 
         await clientRepository.SaveChangesAsync(cancellationToken);
 
-        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, nowUtc));
+        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, account.Role, nowUtc));
     }
 
     /// <summary>
@@ -199,10 +199,14 @@ public class AuthService(
 
         return account is null
             ? AuthOutcome.Failure(401, "Недействительный refresh-токен", "Войдите заново")
-            : AuthOutcome.Success(IssueTokens(account.Id, account.ClientId, nowUtc));
+            : AuthOutcome.Success(IssueTokens(account.Id, account.ClientId, account.Role, nowUtc));
     }
 
-    private (string AccessToken, DateTime ExpiresAtUtc) IssueAccessToken(Guid accountId, Guid clientId, DateTime nowUtc)
+    private (string AccessToken, DateTime ExpiresAtUtc) IssueAccessToken(
+        Guid accountId,
+        Guid clientId,
+        AccountRole role,
+        DateTime nowUtc)
     {
         var expiresAt = nowUtc.AddMinutes(authOptions.AccessTokenLifetimeMinutes);
         var securityKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key!));
@@ -214,8 +218,9 @@ public class AuthService(
             audience: jwtOptions.Audience,
             claims:
             [
-                new Claim(JwtRegisteredClaimNames.Sub, accountId.ToString()),
-                new Claim("client_id", clientId.ToString()),
+                new Claim(AuthClaims.Subject, accountId.ToString()),
+                new Claim(AuthClaims.ClientId, clientId.ToString()),
+                new Claim(AuthClaims.Role, role.ToString()),
             ],
             expires: expiresAt,
             signingCredentials: credentials);
@@ -223,14 +228,14 @@ public class AuthService(
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 
-    private AuthTokens IssueTokens(Guid accountId, Guid clientId, DateTime nowUtc)
+    private AuthTokens IssueTokens(Guid accountId, Guid clientId, AccountRole role, DateTime nowUtc)
     {
-        var (accessToken, expiresAt) = IssueAccessToken(accountId, clientId, nowUtc);
+        var (accessToken, expiresAt) = IssueAccessToken(accountId, clientId, role, nowUtc);
         var refreshToken = refreshStore.Issue(
             accountId,
             timeProvider.GetUtcNow().AddDays(authOptions.RefreshTokenLifetimeDays));
 
-        return new AuthTokens(accountId, clientId, accessToken, expiresAt, refreshToken);
+        return new AuthTokens(accountId, clientId, role, accessToken, expiresAt, refreshToken);
     }
 
     private static string FormatTime(DateTime utc)

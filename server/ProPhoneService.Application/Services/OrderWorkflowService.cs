@@ -54,15 +54,21 @@ public class OrderWorkflowService(
     }
 
     /// <summary>
-    /// Получить карточку заказа по идентификатору
+    /// Получить карточку заказа по идентификатору: мастер видит любой заказ,
+    /// клиент - только свой (чужой заказ неотличим от несуществующего - защита от IDOR)
     /// </summary>
-    /// <returns>Карточка заказа или <c>null</c>, если заказ не найден</returns>
+    /// <param name="id">Идентификатор заказа</param>
+    /// <param name="viewerClientId">Клиент из токена или <c>null</c> для неавторизованного</param>
+    /// <param name="isMaster">Признак роли мастера (доступ ко всем заказам)</param>
+    /// <returns>Карточка заказа или <c>null</c>, если заказ не найден или недоступен</returns>
     public async Task<RepairOrderDetailDto?> GetByIdAsync(
         Guid id,
+        Guid? viewerClientId,
+        bool isMaster,
         CancellationToken cancellationToken = default)
     {
         var order = await orderRepository.GetWithDetailsAsync(id, cancellationToken);
-        if (order is null)
+        if (order is null || (!isMaster && order.ClientId != viewerClientId))
         {
             return null;
         }

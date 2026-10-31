@@ -37,6 +37,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int>("Role")
+                        .HasColumnType("integer")
+                        .HasColumnName("role");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ClientId")
@@ -235,6 +239,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("changed_at");
 
+                    b.Property<Guid?>("ChangedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by");
+
                     b.Property<string>("Comment")
                         .HasColumnType("text")
                         .HasColumnName("comment");
@@ -319,6 +327,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
 
                     b.HasKey("Id");
 

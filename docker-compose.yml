@@ -20,6 +20,7 @@ services:
     environment:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
+      Auth__MasterEmail: ${MASTER_EMAIL}
       ASPNETCORE_ENVIRONMENT: Development
     ports:
       - "8080:8080"

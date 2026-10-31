@@ -26,6 +26,7 @@ public class ChangeStatusEndpointTests
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();
@@ -64,7 +65,7 @@ public class ChangeStatusEndpointTests
         var order = NewOrder();
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
@@ -82,7 +83,7 @@ public class ChangeStatusEndpointTests
         var order = NewOrder(); // Created
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
@@ -100,7 +101,7 @@ public class ChangeStatusEndpointTests
         order.ChangeStatus(RepairStatus.InDiagnostic);
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
@@ -116,7 +117,7 @@ public class ChangeStatusEndpointTests
     {
         var store = new OrderStore { Order = null };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{Guid.NewGuid()}/status",
@@ -137,7 +138,7 @@ public class ChangeStatusEndpointTests
 
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
@@ -159,7 +160,7 @@ public class ChangeStatusEndpointTests
         var order = NewOrder();
         var store = new OrderStore { Order = order, ThrowConcurrency = true };
         using var factory = store.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
