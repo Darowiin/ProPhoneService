@@ -37,8 +37,9 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<RepairOrder>> GetAllByClientIdAsync(
+    public async Task<IReadOnlyList<RepairOrder>> GetPageByClientIdAsync(
         Guid clientId,
+        RepairStatus? status,
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default)
@@ -47,7 +48,12 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
 
         return await Set
             .AsNoTracking()
+            .Include(x => x.Device)
+            .Include(x => x.StatusHistory)
             .Where(x => x.ClientId == clientId)
+            // Неподтверждённая заявка в ЛК не показывается
+            .Where(x => x.Status == null || x.Status != RepairStatus.PendingContact)
+            .Where(x => status == null || x.Status == status)
             .OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
             .Skip(skip)

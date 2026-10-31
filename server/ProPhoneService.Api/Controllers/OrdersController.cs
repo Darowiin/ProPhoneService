@@ -34,7 +34,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || page > OrderWorkflowService.MaxPage)
+        if (page < 1 || page > OrderPaging.MaxPage)
         {
             return BadRequest(new ProblemDetails
             {

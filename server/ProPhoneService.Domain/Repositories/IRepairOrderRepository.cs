@@ -22,11 +22,14 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получить страницу заказов клиента, отсортированные по дате создания (новые сверху)
+    /// Получить страницу заказов клиента с фильтром по статусу, отсортированные по дате создания (новые сверху)
     /// </summary>
-    /// <remarks>Для клиента (список заявок)</remarks>
-    Task<IReadOnlyList<RepairOrder>> GetAllByClientIdAsync(
+    /// <remarks>Для личного кабинета; неподтверждённые заявки не попадают</remarks>
+    /// <param name="clientId">Идентификатор клиента</param>
+    /// <param name="status">Статус для фильтра или <c>null</c> - все заказы клиента</param>
+    Task<IReadOnlyList<RepairOrder>> GetPageByClientIdAsync(
         Guid clientId,
+        RepairStatus? status,
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default);

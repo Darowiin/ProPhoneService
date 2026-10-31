@@ -7,22 +7,12 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Заказы на ремонт: чтение для панели мастера и смена статусов
+/// Заказы на ремонт: чтение для панели мастера и личного кабинета клиента, смена статусов
 /// </summary>
 public class OrderWorkflowService(
     IRepairOrderRepository orderRepository,
     IMapper mapper)
 {
-    /// <summary>
-    /// Размер страницы для списка заказов
-    /// </summary>
-    public const int PageSize = 25;
-
-    /// <summary>
-    /// Максимальный номер страницы, при котором смещение не переполняет int
-    /// </summary>
-    public static readonly int MaxPage = int.MaxValue / PageSize + 1;
-
     /// <summary>
     /// Получить страницу заказов с фильтрами по статусу и диапазону желаемой даты визита (новые сверху)
     /// </summary>
@@ -37,17 +27,44 @@ public class OrderWorkflowService(
         int page,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || page > MaxPage)
+        if (page < 1 || page > OrderPaging.MaxPage)
         {
-            throw new ArgumentOutOfRangeException(nameof(page), page, $"Номер страницы должен быть от 1 до {MaxPage}");
+            throw new ArgumentOutOfRangeException(nameof(page), page, $"Номер страницы должен быть от 1 до {OrderPaging.MaxPage}");
         }
 
         var orders = await orderRepository.GetPageAsync(
             status,
             visitFrom,
             visitTo,
-            skip: (page - 1) * PageSize,
-            take: PageSize,
+            skip: (page - 1) * OrderPaging.PageSize,
+            take: OrderPaging.PageSize,
+            cancellationToken);
+
+        return mapper.Map<IReadOnlyList<RepairOrderListItemDto>>(orders);
+    }
+
+    /// <summary>
+    /// Получить страницу заказов клиента (личный кабинет), новые сверху
+    /// </summary>
+    /// <param name="clientId">Клиент из клейма токена</param>
+    /// <param name="status">Статус для фильтра или <c>null</c> - все заказы клиента</param>
+    /// <param name="page">Номер страницы (с 1)</param>
+    public async Task<IReadOnlyList<RepairOrderListItemDto>> GetClientPageAsync(
+        Guid clientId,
+        RepairStatus? status,
+        int page,
+        CancellationToken cancellationToken = default)
+    {
+        if (page < 1 || page > OrderPaging.MaxPage)
+        {
+            throw new ArgumentOutOfRangeException(nameof(page), page, $"Номер страницы должен быть от 1 до {OrderPaging.MaxPage}");
+        }
+
+        var orders = await orderRepository.GetPageByClientIdAsync(
+            clientId,
+            status,
+            skip: (page - 1) * OrderPaging.PageSize,
+            take: OrderPaging.PageSize,
             cancellationToken);
 
         return mapper.Map<IReadOnlyList<RepairOrderListItemDto>>(orders);
