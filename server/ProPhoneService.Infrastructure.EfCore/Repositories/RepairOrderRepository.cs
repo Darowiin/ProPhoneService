@@ -62,6 +62,38 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<DeviceType, int>> CountCompletedByDeviceTypeAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await Context.RepairStatusHistories
+            .Where(h => h.Status == RepairStatus.Completed)
+            .Where(h => fromUtc == null || h.ChangedAt >= fromUtc)
+            .Where(h => toUtc == null || h.ChangedAt <= toUtc)
+            .Select(h => h.RepairOrder!.Device!.Type)
+            .GroupBy(type => type)
+            .Select(group => new { Type = group.Key, Count = group.Count() })
+            .ToListAsync(cancellationToken);
+
+        return rows.ToDictionary(x => x.Type, x => x.Count);
+    }
+
+    /// <inheritdoc />
+    public Task<decimal> SumCompletedOrdersAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default)
+    {
+        return Context.RepairStatusHistories
+            .Where(h => h.Status == RepairStatus.Completed)
+            .Where(h => fromUtc == null || h.ChangedAt >= fromUtc)
+            .Where(h => toUtc == null || h.ChangedAt <= toUtc)
+            .Select(h => h.RepairOrder!.TotalPrice)
+            .SumAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<RepairOrder>> GetPageAsync(
         RepairStatus? status,
         DateTime? visitFrom,

@@ -23,6 +23,11 @@ public class EfRepository<T>(ProPhoneServiceDbContext context) : IRepository<T>
     /// </summary>
     protected DbSet<T> Set => context.Set<T>();
 
+    /// <summary>
+    /// Контекст базы данных (для запросов по связанным сущностям)
+    /// </summary>
+    protected ProPhoneServiceDbContext Context => context;
+
     /// <inheritdoc />
     public virtual async Task<T?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {

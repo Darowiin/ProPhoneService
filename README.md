@@ -123,10 +123,15 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 | POST | `/api/orders` | публично | создание заявки: без токена - `PendingContact` + код на email, с токеном - сразу `Created`; описание проблемы до 2000 символов; 201 + номер |
 | GET | `/api/me/orders?status=&page=` | Client | заказы клиента из клейма токена (новые сверху, пагинация; неподтверждённые не попадают) |
 | GET | `/api/me/orders/{id}` | Client | карточка своего заказа: устройство, услуги, стоимость, тайм-лайн; чужой - 404 |
+| GET | `/api/master/stats?period=Month\Quarter\All` | Master | статистика: завершённые ремонты по типам устройств и сумма (по моменту перехода в `Completed`) |
 | PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
 | POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
 | POST | `/api/auth/confirm` | публично | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
 | POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
+
+## Статистика
+
+`GET /api/master/stats?period=` считает только завершённые ремонты: дата события - момент перехода заказа в `Completed` (`repair_status_history.changed_at`), период отсчитывается с начала месяца (`Month`, по умолчанию), с начала квартала (`Quarter`) или без нижней границы (`All`)
 
 ## Роли и доступ
 

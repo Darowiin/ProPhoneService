@@ -35,6 +35,26 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Количество завершённых ремонтов по типам устройств за период (по моменту перехода в Completed)
+    /// </summary>
+    /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>
+    /// <param name="toUtc">Конец периода (UTC, включительно) или <c>null</c> - без верхней границы</param>
+    Task<IReadOnlyDictionary<DeviceType, int>> CountCompletedByDeviceTypeAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Сумма по заказам, завершённым за период (по моменту перехода в Completed)
+    /// </summary>
+    /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>
+    /// <param name="toUtc">Конец периода (UTC, включительно) или <c>null</c> - без верхней границы</param>
+    Task<decimal> SumCompletedOrdersAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Получить страницу заказов: фильтры по статусу и диапазону желаемой даты визита,
     /// отсортированные по дате создания (новые сверху)
     /// </summary>
