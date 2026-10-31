@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Infrastructure.EfCore.Auditing;
+using ProPhoneService.Infrastructure.EfCore.Notifications;
 using ProPhoneService.Infrastructure.EfCore.Repositories;
 
 namespace ProPhoneService.Infrastructure.EfCore;
@@ -35,7 +37,19 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IClientRepository, ClientRepository>();
         services.AddScoped<IRepairOrderRepository, RepairOrderRepository>();
         services.AddScoped<IServiceRepository, ServiceRepository>();
+        services.AddScoped<IAccountRepository, AccountRepository>();
+        services.AddScoped<IAuthCodeRepository, AuthCodeRepository>();
+        services.AddScoped<INotifier, LoggingNotifier>();
 
+        return services;
+    }
+
+    /// <summary>
+    /// Регистрация отправителя сообщений (демо-заглушка; провайдеры - Карточка 5)
+    /// </summary>
+    public static IServiceCollection AddNotifier(this IServiceCollection services)
+    {
+        services.AddScoped<INotifier, LoggingNotifier>();
         return services;
     }
 }

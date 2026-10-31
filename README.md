@@ -111,6 +111,9 @@ Created → InDiagnostic → Agreed → InProgress → Ready → Completed; от
 | GET | `/api/orders/{id}` | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов |
 | POST | `/api/orders` | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
 | PATCH | `/api/orders/{id}/status` | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
+| POST | `/api/auth/request-code` | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
+| POST | `/api/auth/confirm` | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
+| POST | `/api/auth/refresh` | ротация refresh-токена (погашенный старый отклоняется) |
 
 Ошибки валидации возвращаются как `ValidationProblemDetails` со списком полей; при создании заявки обязательно должен быть телефон или почта, дата визита проверяется на рабочие часы и "не в прошлом"
 

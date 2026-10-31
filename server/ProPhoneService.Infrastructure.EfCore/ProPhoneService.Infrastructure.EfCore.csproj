@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ProPhoneService.Domain\ProPhoneService.Domain.csproj" />
+    <ProjectReference Include="..\ProPhoneService.Application.Contracts\ProPhoneService.Application.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

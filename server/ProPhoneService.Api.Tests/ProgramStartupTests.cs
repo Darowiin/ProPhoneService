@@ -47,9 +47,10 @@ public class ProgramStartupTests
     }
 
     [Fact]
-    public async Task Startup_ProductionWithConnectionString_Starts()
+    public async Task Startup_ProductionWithConnectionStringAndJwtKey_Starts()
     {
         Environment.SetEnvironmentVariable(ConnectionStringEnvKey, "Host=x");
+        Environment.SetEnvironmentVariable("Jwt__Key", new string('p', 48));
         try
         {
             using var client = new WebApplicationFactory<Program>()
@@ -64,6 +65,7 @@ public class ProgramStartupTests
         finally
         {
             Environment.SetEnvironmentVariable(ConnectionStringEnvKey, null);
+            Environment.SetEnvironmentVariable("Jwt__Key", null);
         }
     }
 }
