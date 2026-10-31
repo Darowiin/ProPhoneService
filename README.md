@@ -34,6 +34,8 @@ docker compose up --build   # БД на 5432, API на 8080
 
 API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
 
+Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
+
 ### Backend без Docker
 
 ```bash
