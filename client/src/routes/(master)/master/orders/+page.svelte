@@ -288,7 +288,7 @@
 							</tr>
 						{:else}
 							<tr>
-								<th scope="col">Клиент</th><th scope="col">Устройство</th><th scope="col">Желаемый визит</th><th scope="col">Создана</th><th scope="col">Статус</th>
+								<th scope="col">Клиент</th><th scope="col">Устройство</th><th scope="col">Причина обращения</th><th scope="col">Цена</th><th scope="col">Статус</th><th scope="col">Дата</th>
 							</tr>
 						{/if}
 					</thead>
@@ -306,9 +306,10 @@
 								{:else}
 									<td class="row__client">{order.clientName ?? '—'}</td>
 									<td class="row__device">{order.deviceName}</td>
-									<td class="row__date">{order.preferredVisitAt ? formatVisit(order.preferredVisitAt) : '—'}</td>
-									<td class="row__date">{formatDate(order.createdAt)}</td>
+									<td class="row__problem">{order.problem ?? order.serviceName ?? '—'}</td>
+									<td class="row__price">{price(order)}</td>
 									<td><StatusSelect status={order.status} disabled={changing !== null} onchange={(next) => onStatusChange(order, next)} /></td>
+									<td class="row__date">{formatDate(order.createdAt)}</td>
 								{/if}
 							</tr>
 						{/each}
@@ -679,6 +680,16 @@
 
 	.row__price {
 		font-weight: 500;
+	}
+
+	.row__problem {
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		font-size: 13px;
+		color: var(--muted);
 	}
 
 	.row__date {
