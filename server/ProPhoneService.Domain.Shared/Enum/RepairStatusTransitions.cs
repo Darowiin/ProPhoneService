@@ -14,6 +14,7 @@ public static class RepairStatusTransitions
         [RepairStatus.Ready] = [RepairStatus.Completed],
         [RepairStatus.Completed] = [],
         [RepairStatus.Cancelled] = [],
+        [RepairStatus.PendingContact] = [RepairStatus.Created],
     };
 
     /// <summary>

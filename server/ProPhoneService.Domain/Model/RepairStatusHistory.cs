@@ -43,6 +43,12 @@ public class RepairStatusHistory
     public string? Comment { get; set; }
 
     /// <summary>
+    /// Аккаунт, сменивший статус (штампует AuditInterceptor; <c>null</c> - изменение без авторизации)
+    /// </summary>
+    [Column("changed_by")]
+    public Guid? ChangedBy { get; set; }
+
+    /// <summary>
     /// Заказ, к которому относится запись в истории
     /// </summary>
     public RepairOrder? RepairOrder { get; set; }

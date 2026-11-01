@@ -20,7 +20,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<PriceListService>();
         services.AddScoped<OrderWorkflowService>();
         services.AddScoped<OrderCreationService>();
+        services.AddScoped<AuthService>();
+        services.AddScoped<MasterAccountSeeder>();
+        services.AddScoped<StatisticsService>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
 
         var config = new TypeAdapterConfig();
         config.Scan(typeof(MappingRegister).Assembly);

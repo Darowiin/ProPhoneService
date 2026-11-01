@@ -45,6 +45,18 @@ public class OrdersEndpointTests
         return (order, device);
     }
 
+    /// <summary>
+    /// Заказ с устройством и заданной желаемой датой визита (для фильтра по preferred_visit_at)
+    /// </summary>
+    private static (RepairOrder Order, Device Device) MakeOrderWithVisit(RepairStatus status, DateTime? preferredVisitAt)
+    {
+        var (order, device) = MakeOrderWithDevice(status, DateTime.UtcNow);
+
+        typeof(RepairOrder).GetProperty(nameof(RepairOrder.PreferredVisitAt))!.SetValue(order, preferredVisitAt);
+
+        return (order, device);
+    }
+
     private class OrderSource
     {
         public List<RepairOrder> Orders { get; set; } = [];
@@ -57,19 +69,26 @@ public class OrdersEndpointTests
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
             {
+                host.UseSetting("Jwt:Key", TestJwt.Key);
+                host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
                     var repository = new Mock<IRepairOrderRepository>();
                     repository
                         .Setup(r => r.GetPageAsync(
                             It.IsAny<RepairStatus?>(),
+                            It.IsAny<DateTime?>(),
+                            It.IsAny<DateTime?>(),
                             It.IsAny<int>(),
                             It.IsAny<int>(),
                             It.IsAny<CancellationToken>()))
-                        .ReturnsAsync((RepairStatus? status, int skip, int take, CancellationToken _) =>
+                        .ReturnsAsync((RepairStatus? status, DateTime? visitFrom, DateTime? visitTo, int skip, int take, CancellationToken _) =>
                         {
                             IEnumerable<RepairOrder> query = Orders
                                 .Where(o => status == null || o.Status == status)
+                                .Where(o => (visitFrom == null && visitTo == null) || (o.PreferredVisitAt != null
+                                    && (visitFrom == null || o.PreferredVisitAt >= visitFrom)
+                                    && (visitTo == null || o.PreferredVisitAt <= visitTo)))
                                 .OrderByDescending(o => o.CreatedAt)
                                 .ThenByDescending(o => o.Id);
 
@@ -93,7 +112,7 @@ public class OrdersEndpointTests
                             }
 
                             order.Device = Devices.GetValueOrDefault(order.DeviceId);
-                            order.Client = Clients.GetValueOrDefault(order.ClientId);
+                            order.Client = order.ClientId is Guid orderClientId ? Clients.GetValueOrDefault(orderClientId) : null;
 
                             return order;
                         });
@@ -116,7 +135,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [oldOrder.DeviceId] = oldDevice, [newOrder.DeviceId] = newDevice },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders");
 
@@ -147,7 +166,7 @@ public class OrdersEndpointTests
             Devices = new Dictionary<Guid, Device> { [createdOrder.DeviceId] = createdDevice, [inProgressOrder.DeviceId] = inProgressDevice },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?status=InProgress");
 
@@ -162,7 +181,7 @@ public class OrdersEndpointTests
     public async Task GetPage_UnknownStatus_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?status=NotAStatus");
 
@@ -173,7 +192,7 @@ public class OrdersEndpointTests
     public async Task GetPage_InvalidPage_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders?page=0");
 
@@ -184,7 +203,7 @@ public class OrdersEndpointTests
     public async Task GetPage_PageBeyondIntOverflow_Returns400()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         // Граница переполнения (page-1)*25 > int.MaxValue: page 85 899 347 даёт отрицательный skip
         var response = await client.GetAsync("/api/orders?page=85899347");
@@ -204,6 +223,7 @@ public class OrdersEndpointTests
         }
 
         order.TotalPrice = 2700m;
+        order.ProblemDescription = "Не заряжается и греется";
         var svcCharging = new Service { Id = Guid.NewGuid(), Name = "Замена разъема зарядки", Price = 1200m, IsActive = true };
         var svcBattery = new Service { Id = Guid.NewGuid(), Name = "Замена аккумулятора", Price = 1500m, IsActive = true };
         order.Services.Add(new RepairOrderService { RepairOrderId = order.Id, ServiceId = svcCharging.Id, Price = 1200m, Service = svcCharging });
@@ -213,10 +233,10 @@ public class OrdersEndpointTests
         {
             Orders = [order],
             Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
-            Clients = new Dictionary<Guid, Client> { [order.ClientId] = clientEntity },
+            Clients = new Dictionary<Guid, Client> { [order.ClientId!.Value] = clientEntity },
         };
         using var factory = source.CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync($"/api/orders/{order.Id}");
 
@@ -228,6 +248,7 @@ public class OrdersEndpointTests
         Assert.Equal("iPhone 13", card.Device.Model);
 
         // Клиент из карточки
+        Assert.NotNull(card.Client);
         Assert.Equal("Иван", card.Client.Name);
         Assert.Equal("+79001234567", card.Client.Phone);
         Assert.Equal("ivan@example.com", card.Client.Email);
@@ -237,6 +258,7 @@ public class OrdersEndpointTests
         Assert.Contains(card.Services, s => s.Name == "Замена разъема зарядки" && s.Price == 1200m);
         Assert.Contains(card.Services, s => s.Name == "Замена аккумулятора" && s.Price == 1500m);
         Assert.Equal(2700m, card.TotalPrice);
+        Assert.Equal("Не заряжается и греется", card.ProblemDescription);
 
         // Тайм-лайн хронологичен
         Assert.Equal(RepairStatus.Created, card.StatusTimeline[0].Status);
@@ -247,7 +269,7 @@ public class OrdersEndpointTests
     public async Task GetById_UnknownOrder_Returns404()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync($"/api/orders/{Guid.NewGuid()}");
 
@@ -255,10 +277,78 @@ public class OrdersEndpointTests
     }
 
     [Fact]
+    public async Task GetPage_VisitDateRange_Returns200WithOnlyOrdersInRange()
+    {
+        var (oldOrder, oldDevice) = MakeOrderWithVisit(RepairStatus.Created, new DateTime(2026, 10, 1, 10, 0, 0, DateTimeKind.Utc));
+        var (newOrder, newDevice) = MakeOrderWithVisit(RepairStatus.Agreed, new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc));
+        var source = new OrderSource
+        {
+            Orders = [oldOrder, newOrder],
+            Devices = new Dictionary<Guid, Device> { [oldOrder.DeviceId] = oldDevice, [newOrder.DeviceId] = newDevice },
+        };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-10-01T00:00:00Z&visitTo=2026-10-05T23:59:59Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        var item = Assert.Single(items);
+        Assert.Equal(oldOrder.Id, item.Id);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitDateWithoutRange_Returns200ForNullVisit()
+    {
+        // Заказ без желаемой даты визита не должен пропадать, если фильтр по датам не задан
+        var (order, device) = MakeOrderWithVisit(RepairStatus.Created, null);
+        var source = new OrderSource
+        {
+            Orders = [order],
+            Devices = new Dictionary<Guid, Device> { [order.DeviceId] = device },
+        };
+        using var factory = source.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.GetAsync("/api/orders");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        Assert.Single(items);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitDateEmptyRange_Returns200WithEmptyArray()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-11-01T00:00:00Z&visitTo=2026-11-02T23:59:59Z");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var items = await response.Content.ReadFromJsonAsync<List<RepairOrderListItemDto>>(_jsonOptions);
+        Assert.NotNull(items);
+        Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task GetPage_VisitFromLaterThanVisitTo_Returns400()
+    {
+        using var factory = new OrderSource().CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.GetAsync("/api/orders?visitFrom=2026-10-05T00:00:00Z&visitTo=2026-10-01T00:00:00Z");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetPage_EmptyResult_Returns200WithEmptyArray()
     {
         using var factory = new OrderSource().CreateFactory();
-        using var client = factory.CreateClient();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/orders");
 

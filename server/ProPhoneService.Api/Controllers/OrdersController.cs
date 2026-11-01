@@ -1,33 +1,40 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ProPhoneService.Api.Contracts;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
+using ProPhoneService.Domain.Shared;
 using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Api.Controllers;
 
 /// <summary>
-/// Заказы на ремонт (панель мастера)
+/// Заказы на ремонт: панель мастера (только Master) и карточка заказа (свой - клиенту, любой - мастеру)
 /// </summary>
 [ApiController]
 [Route("api/orders")]
 public class OrdersController(OrderWorkflowService ordersService, OrderCreationService orderCreationService) : ControllerBase
 {
     /// <summary>
-    /// Получить страницу заказов с фильтром по статусу (новые сверху)
+    /// Получить страницу заказов с фильтрами по статусу и диапазону желаемой даты визита (новые сверху)
     /// </summary>
-    /// <param name="status">Фильтр по статусу; без параметра — все заказы</param>
+    /// <param name="status">Фильтр по статусу; без параметра - все заказы</param>
+    /// <param name="visitFrom">Начало диапазона по желаемой дате визита (UTC ISO 8601; необязательно)</param>
+    /// <param name="visitTo">Конец диапазона по желаемой дате визита (UTC ISO 8601, включительно; необязательно)</param>
     /// <param name="page">Номер страницы, начиная с 1 (по умолчанию 1)</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<RepairOrderListItemDto>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<IReadOnlyList<RepairOrderListItemDto>>> GetPage(
         [FromQuery] RepairStatus? status = null,
+        [FromQuery] DateTimeOffset? visitFrom = null,
+        [FromQuery] DateTimeOffset? visitTo = null,
         [FromQuery] int page = 1,
         CancellationToken cancellationToken = default)
     {
-        if (page < 1 || page > OrderWorkflowService.MaxPage)
+        if (page < 1 || page > OrderPaging.MaxPage)
         {
             return BadRequest(new ProblemDetails
             {
@@ -36,7 +43,21 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
             });
         }
 
-        var pageItems = await ordersService.GetPageAsync(status, page, cancellationToken);
+        if (visitFrom is not null && visitTo is not null && visitFrom > visitTo)
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Некорректный диапазон дат",
+                Detail = "Параметр visitFrom должен быть не позже параметра visitTo",
+            });
+        }
+
+        var pageItems = await ordersService.GetPageAsync(
+            status,
+            visitFrom?.UtcDateTime,
+            visitTo?.UtcDateTime,
+            page,
+            cancellationToken);
 
         return Ok(pageItems);
     }
@@ -44,7 +65,9 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <summary>
     /// Получить карточку заказа: клиент, устройство, услуги и тайм-лайн статусов
     /// </summary>
+    /// <remarks>Клиенту доступен только собственный заказ: чужой идентификатор даёт 404 (защита от IDOR)</remarks>
     /// <param name="id">Идентификатор заказа</param>
+    [Authorize]
     [HttpGet("{id:guid}")]
     [ProducesResponseType<RepairOrderDetailDto>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -52,7 +75,12 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         Guid id,
         CancellationToken cancellationToken = default)
     {
-        var card = await ordersService.GetByIdAsync(id, cancellationToken);
+        var isMaster = User.IsInRole(nameof(AccountRole.Master));
+        var viewerClientId = Guid.TryParse(User.FindFirst(AuthClaims.ClientId)?.Value, out var claimClientId)
+            ? claimClientId
+            : (Guid?)null;
+
+        var card = await ordersService.GetByIdAsync(id, viewerClientId, isMaster, cancellationToken);
 
         if (card is null)
         {
@@ -72,6 +100,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <remarks>Запрещённый переход (перепрыгнуть этап или вернуть назад) возвращает 409</remarks>
     /// <param name="id">Идентификатор заказа</param>
     /// <param name="request">Целевой статус и комментарий</param>
+    [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpPatch("{id:guid}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -109,7 +138,12 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// <summary>
     /// Создать заявку на ремонт
     /// </summary>
+    /// <remarks>
+    /// Без токена заявка создаётся неподтверждённой (PendingContact) и активируется кодом
+    /// на email, который уходит через INotifier; с токеном клиент привязывается сразу
+    /// </remarks>
     /// <param name="request">Данные заявки</param>
+    [AllowAnonymous]
     [HttpPost]
     [ProducesResponseType<CreateOrderResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -117,7 +151,11 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         [FromBody] CreateOrderRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await orderCreationService.CreateAsync(request, cancellationToken);
+        var clientId = Guid.TryParse(User.FindFirst(AuthClaims.ClientId)?.Value, out var claimClientId)
+            ? claimClientId
+            : (Guid?)null;
+
+        var result = await orderCreationService.CreateAsync(request, clientId, cancellationToken);
 
         if (!result.IsSuccess)
         {
@@ -129,6 +167,9 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
 
         var orderId = result.OrderId!.Value;
 
-        return CreatedAtAction(nameof(GetById), new { id = orderId }, new CreateOrderResponse(orderId));
+        return CreatedAtAction(
+            nameof(GetById),
+            new { id = orderId },
+            new CreateOrderResponse(orderId, result.RequiresEmailConfirmation));
     }
 }

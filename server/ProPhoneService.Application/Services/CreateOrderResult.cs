@@ -20,6 +20,11 @@ public class CreateOrderResult
     public IReadOnlyDictionary<string, string[]>? Errors { get; private init; }
 
     /// <summary>
+    /// Признак неподтверждённой заявки: требуется код на email, чтобы она стала активной
+    /// </summary>
+    public bool RequiresEmailConfirmation { get; private init; }
+
+    /// <summary>
     /// Признак успешного создания
     /// </summary>
     public bool IsSuccess => OrderId is not null;
@@ -27,7 +32,10 @@ public class CreateOrderResult
     /// <summary>
     /// Успешный результат с номером заявки
     /// </summary>
-    public static CreateOrderResult Success(Guid orderId) => new() { OrderId = orderId };
+    /// <param name="orderId">Номер созданной заявки</param>
+    /// <param name="requiresEmailConfirmation">Заявка ждёт подтверждения email (гостевая)</param>
+    public static CreateOrderResult Success(Guid orderId, bool requiresEmailConfirmation = false) =>
+        new() { OrderId = orderId, RequiresEmailConfirmation = requiresEmailConfirmation };
 
     /// <summary>
     /// Неудача с ошибками по полям

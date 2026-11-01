@@ -38,5 +38,10 @@ public enum RepairStatus
     /// <summary>
     /// Заказ отменён клиентом или мастером
     /// </summary>
-    Cancelled
+    Cancelled,
+
+    /// <summary>
+    /// Заявка оставлена без входа: ждёт подтверждения email, клиент и аккаунт ещё не созданы
+    /// </summary>
+    PendingContact
 }

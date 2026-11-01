@@ -57,4 +57,10 @@ public record CreateOrderRequest
     /// Идентификаторы выбранных услуг (может быть пустым)
     /// </summary>
     public IReadOnlyList<Guid>? ServiceIds { get; init; }
+
+    /// <summary>
+    /// Описание проблемы со слов клиента (необязательно)
+    /// </summary>
+    [StringLength(2000, ErrorMessage = "Описание проблемы слишком длинное")]
+    public string? ProblemDescription { get; init; }
 }

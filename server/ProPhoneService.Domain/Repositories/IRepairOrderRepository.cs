@@ -15,23 +15,57 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     Task<RepairOrder?> GetWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получить страницу заказов клиента, отсортированные по дате создания (новые сверху)
+    /// Получить неподтверждённые заявки с указанным контактом email (для привязки после подтверждения кода)
     /// </summary>
-    /// <remarks>Для клиента (список заявок)</remarks>
-    Task<IReadOnlyList<RepairOrder>> GetAllByClientIdAsync(
+    Task<IReadOnlyList<RepairOrder>> GetPendingByEmailAsync(
+        string contactEmail,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получить страницу заказов клиента с фильтром по статусу, отсортированные по дате создания (новые сверху)
+    /// </summary>
+    /// <remarks>Для личного кабинета; неподтверждённые заявки не попадают</remarks>
+    /// <param name="clientId">Идентификатор клиента</param>
+    /// <param name="status">Статус для фильтра или <c>null</c> - все заказы клиента</param>
+    Task<IReadOnlyList<RepairOrder>> GetPageByClientIdAsync(
         Guid clientId,
+        RepairStatus? status,
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получить страницу заказов, при указанном статусе — отфильтрованных по нему,
-    /// отсортированных по дате создания (новые сверху)
+    /// Количество завершённых ремонтов по типам устройств за период (по моменту перехода в Completed)
+    /// </summary>
+    /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>
+    /// <param name="toUtc">Конец периода (UTC, включительно) или <c>null</c> - без верхней границы</param>
+    Task<IReadOnlyDictionary<DeviceType, int>> CountCompletedByDeviceTypeAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Сумма по заказам, завершённым за период (по моменту перехода в Completed)
+    /// </summary>
+    /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>
+    /// <param name="toUtc">Конец периода (UTC, включительно) или <c>null</c> - без верхней границы</param>
+    Task<decimal> SumCompletedOrdersAsync(
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Получить страницу заказов: фильтры по статусу и диапазону желаемой даты визита,
+    /// отсортированные по дате создания (новые сверху)
     /// </summary>
     /// <remarks>Для панели мастера (список заявок)</remarks>
-    /// <param name="status">Статус для фильтра или <c>null</c> — все заказы</param>
+    /// <param name="status">Статус для фильтра или <c>null</c> - все заказы</param>
+    /// <param name="visitFrom">Начало диапазона по желаемой дате визита (UTC, необязательно)</param>
+    /// <param name="visitTo">Конец диапазона по желаемой дате визита (UTC, включительно, необязательно)</param>
     Task<IReadOnlyList<RepairOrder>> GetPageAsync(
         RepairStatus? status,
+        DateTime? visitFrom,
+        DateTime? visitTo,
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default);
