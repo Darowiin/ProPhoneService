@@ -8,11 +8,12 @@
 // Order creation sends name, contact, device, visit time and the selected
 // service ids; the API computes the total price from those ids.
 
-import { accountMock, reviews as mockReviews, serviceMeta, workshop } from '../mocks/db.ts';
+import { accountMock, serviceMeta, workshop } from '../mocks/db.ts';
 import { refresh as authServiceRefresh } from './auth.ts';
 import { bearerToken, dropSession } from '../lib/auth/session.svelte.ts';
 
 export type RepairStatus =
+	| 'PendingContact'
 	| 'Created'
 	| 'InDiagnostic'
 	| 'Agreed'
@@ -93,6 +94,7 @@ export class ApiError extends Error {
 // ─── Status transitions (mirrors RepairStatusTransitions from Domain.Shared) ──
 
 export const statusTransitions: Record<RepairStatus, RepairStatus[]> = {
+	PendingContact: [],
 	Created: ['InDiagnostic', 'Cancelled'],
 	InDiagnostic: ['Agreed', 'Cancelled'],
 	Agreed: ['InProgress', 'Cancelled'],
@@ -103,6 +105,7 @@ export const statusTransitions: Record<RepairStatus, RepairStatus[]> = {
 };
 
 export const statusLabels: Record<RepairStatus, string> = {
+	PendingContact: 'Ожидает подтверждения',
 	Created: 'Принята',
 	InDiagnostic: 'Диагностика',
 	Agreed: 'Согласована',
@@ -245,6 +248,7 @@ export function deriveMasterStats(
 	now = new Date()
 ): MasterStats {
 	const statusCounts: Record<RepairStatus, number> = {
+		PendingContact: 0,
 		Created: 0,
 		InDiagnostic: 0,
 		Agreed: 0,
@@ -709,15 +713,6 @@ export interface AccountOrderDto {
 	timeline: { label: string; at: string }[];
 }
 
-export interface ReviewDto {
-	id: string;
-	author: string;
-	rating: number;
-	text: string;
-	/** ISO date the review was posted. */
-	createdAt: string;
-}
-
 function mapMeOrder(raw: BackendOrderListItemLike): AccountOrderDto {
 	return {
 		id: raw.id,
@@ -793,68 +788,4 @@ export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {
 		at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 	}));
 	return mapped;
-}
-
-/** Posts a review for a completed order; a repeated review fails with 409. */
-export async function createReview(
-	orderId: string,
-	rating: number,
-	text: string,
-	author = 'Клиент'
-): Promise<ReviewDto> {
-	if (isMockMode) {
-		await delay(350);
-		if (accountMock.review.text) throw new ApiError('Отзыв уже оставлен', 409);
-		accountMock.review.text = text;
-		accountMock.review.rating = rating;
-		return {
-			id: crypto.randomUUID(),
-			author,
-			rating,
-			text,
-			createdAt: new Date().toISOString()
-		};
-	}
-	try {
-		return await request<ReviewDto>(`/orders/${encodeURIComponent(orderId)}/review`, {
-			method: 'POST',
-			body: JSON.stringify({ rating, text })
-		});
-	} catch (error) {
-		// Card 11 is not merged into the backend yet — the endpoint answers 404.
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
-			throw new ApiError('Отзывы появятся в следующем обновлении сервиса', error.status);
-		}
-		throw error;
-	}
-}
-
-/** Public reviews showcase (mock mode: the landing mockup reviews). */
-export async function fetchReviews(limit = 6): Promise<ReviewDto[]> {
-	if (isMockMode) {
-		await delay();
-		return mockReviews.slice(0, limit).map((review) => ({
-			id: review.id,
-			author: review.author,
-			rating: 5,
-			text: review.text,
-			// Display date from the mockup («24 сентября 2026»), not a synthetic ISO stamp.
-			createdAt: review.date
-		}));
-	}
-	try {
-		return await request<ReviewDto[]>(`/reviews?limit=${limit}`);
-	} catch (error) {
-		// Card 12 is not merged into the backend yet — keep the landing fallback.
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
-			return mockReviews.slice(0, limit).map((review) => ({
-				id: review.id,
-				author: review.author,
-				rating: 5,
-				text: review.text,
-				createdAt: review.date
-			}));
-		}
-		throw error;
-	}
 }

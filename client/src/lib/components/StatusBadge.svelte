@@ -9,6 +9,7 @@
 	const statusKey = $derived(status ?? 'Unknown');
 
 	const labels: Record<RepairStatus | 'Unknown', string> = {
+		PendingContact: 'Ждёт подтверждения',
 		Created: 'Принята',
 		InDiagnostic: 'Диагностика',
 		Agreed: 'Согласована',
@@ -20,6 +21,7 @@
 	};
 
 	const toneClass: Record<RepairStatus | 'Unknown', string> = {
+		PendingContact: 'badge--warning',
 		Created: 'badge--info',
 		InDiagnostic: 'badge--warning',
 		Agreed: 'badge--accent',
