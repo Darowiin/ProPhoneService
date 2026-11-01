@@ -243,6 +243,8 @@ export const heroBadge = {
 // ─── Client account (mockup V2 p4: личный кабинет) ─────────────────────────
 
 export interface AccountOrder {
+	clientName: string | null;
+	clientPhone: string | null;
 	id: string;
 	createdAt: string;
 	device: string;
@@ -264,6 +266,8 @@ export const accountMock = {
 	orders: [
 		{
 			id: 'acc-0001',
+			clientName: 'Анна Смирнова',
+			clientPhone: '+7 (916) 234-56-78',
 			createdAt: '2026-10-01T10:12:00Z',
 			device: 'iPhone 13',
 			repair: 'Замена аккумулятора',
@@ -279,6 +283,8 @@ export const accountMock = {
 		},
 		{
 			id: 'acc-0002',
+			clientName: 'Анна Смирнова',
+			clientPhone: '+7 (916) 234-56-78',
 			createdAt: '2026-08-12T09:30:00Z',
 			device: 'iPhone 13',
 			repair: 'Замена дисплея',
@@ -294,6 +300,8 @@ export const accountMock = {
 		},
 		{
 			id: 'acc-0003',
+			clientName: 'Анна Смирнова',
+			clientPhone: '+7 (916) 234-56-78',
 			createdAt: '2026-05-24T12:00:00Z',
 			device: 'Samsung Galaxy A52',
 			repair: 'Замена разъёма зарядки',
@@ -307,6 +315,8 @@ export const accountMock = {
 		},
 		{
 			id: 'acc-0004',
+			clientName: 'Анна Смирнова',
+			clientPhone: '+7 (916) 234-56-78',
 			createdAt: '2026-02-03T14:00:00Z',
 			device: 'iPhone 11',
 			repair: 'Замена аккумулятора',

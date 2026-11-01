@@ -189,20 +189,21 @@
 
 	.code-group {
 		display: grid;
-		grid-template-columns: repeat(6, 1fr);
-		gap: 10px;
+		grid-template-columns: repeat(6, 44px);
+		gap: 8px;
 		margin-top: 26px;
-		max-width: 400px;
+		max-width: 320px;
 	}
 
 	.code-input {
-		aspect-ratio: 3 / 4;
+		width: 44px;
+		height: 52px;
 		text-align: center;
-		font-size: 28px;
+		font-size: 20px;
 		font-weight: 600;
 		background: var(--bg);
 		border: 1px solid var(--border);
-		border-radius: 10px;
+		border-radius: 8px;
 		transition: border-color 0.15s ease;
 	}
 

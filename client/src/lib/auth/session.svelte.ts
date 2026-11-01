@@ -35,10 +35,11 @@ async function restoreOnce(): Promise<void> {
 	}
 	if (!current) return;
 	// The access token lives ~15 minutes; a stored session is useless without
-	// a valid refresh cookie, so exchange it right away on every cold start.
+	// a valid refresh cookie, so exchange it on every cold start. A transient
+	// refresh failure must not log the user out while the token is still valid.
 	const refreshed = await auth.refresh();
 	if (refreshed) current = refreshed;
-	else {
+	else if (isTokenExpired(current)) {
 		current = null;
 		persist(null);
 	}

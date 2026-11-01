@@ -1,20 +1,16 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
-	import Button from '#lib/components/Button.svelte';
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
-	import { showToast } from '#lib/components/toast.svelte.ts';
+	import { workshop } from '../../../../mocks/db.ts';
 	import { session } from '#lib/auth/session.svelte.ts';
 	import {
 		fetchMyOrderById,
-		createReview,
 		type AccountOrderDto
 	} from '../../../../services/api.ts';
 
 	const orderId = $derived(pageUrlId());
 
-	/** Review author: the client behind the order, falling back to the email. */
-	let currentUser = $state<{ name: string }>({ name: 'Клиент' });
 
 	let order = $state<AccountOrderDto | null>(null);
 	let notFound = $state(false);
@@ -24,10 +20,6 @@
 		return page.params.id ?? '';
 	}
 
-	let rating = $state(0);
-	let text = $state('');
-	let busy = $state(false);
-	let alreadyReviewed = $state(false);
 
 	const priceFormat = new Intl.NumberFormat('ru-RU');
 
@@ -44,35 +36,10 @@
 		fetchMyOrderById(orderId)
 			.then((result) => {
 				order = result;
-				currentUser = { name: result.clientName ?? session.user?.email ?? 'Клиент' };
 			})
 			.catch(() => (notFound = true));
 	});
 
-	async function submitReview(event: SubmitEvent): Promise<void> {
-		event.preventDefault();
-		if (!order || busy) return;
-		if (rating < 1) {
-			showToast('Поставьте оценку от 1 до 5 звёзд', 'error');
-			return;
-		}
-		if (text.trim().length < 10) {
-			showToast('Расскажите чуть подробнее — хотя бы 10 символов', 'error');
-			return;
-		}
-		busy = true;
-		try {
-			await createReview(order.id, rating, text.trim(), currentUser.name);
-			alreadyReviewed = true;
-			showToast('Спасибо! Отзыв опубликован');
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Не удалось отправить отзыв';
-			if (message.includes('уже')) alreadyReviewed = true;
-			showToast(message, 'error');
-		} finally {
-			busy = false;
-		}
-	}
 </script>
 
 <section class="container section repair">
@@ -127,36 +94,17 @@
 		{#if order.status === 'Completed'}
 			<section class="review" aria-label="Отзыв о ремонте">
 				<h2 class="review__title">Как всё прошло?</h2>
-				{#if alreadyReviewed}
-					<p class="review__done">Отзыв уже оставлен — спасибо, что помогаете мастерской стать лучше.</p>
-				{:else}
-					<form class="review__form" onsubmit={submitReview}>
-						<div class="review__stars" role="radiogroup" aria-label="Оценка от 1 до 5">
-							{#each Array.from({ length: 5 }, (_, i) => i + 1) as star (star)}
-								<button
-									class="review__star"
-									class:review__star--on={star <= rating}
-									type="button"
-									role="radio"
-									aria-checked={rating === star}
-									aria-label={`${star} из 5`}
-									onclick={() => (rating = star)}
-								>
-									★
-								</button>
-							{/each}
-						</div>
-						<textarea
-							class="review__input"
-							rows="4"
-							placeholder="Что понравилось? Что можно улучшить?"
-							bind:value={text}
-						></textarea>
-						<div class="review__submit">
-							<Button type="submit" disabled={busy}>{busy ? 'Отправляем…' : 'Отправить отзыв'}</Button>
-						</div>
-					</form>
-				{/if}
+				<p class="review__done">
+					Расскажите о ремонте на Яндекс.Картах — это помогает другим найти мастерскую и держит нас в тонусе.
+				</p>
+				<a
+					class="review__link"
+					href="https://yandex.ru/maps/?text={encodeURIComponent(workshop.address)}"
+					target="_blank"
+					rel="noreferrer"
+				>
+					Оставить отзыв на Яндекс.Картах ↗
+				</a>
 			</section>
 		{/if}
 	{/if}
@@ -299,51 +247,17 @@
 		font-weight: 600;
 	}
 
-	.review__form {
-		margin-top: 16px;
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-	}
-
-	.review__stars {
-		display: flex;
-		gap: 4px;
-	}
-
-	.review__star {
-		font-size: 28px;
-		line-height: 1;
-		color: var(--border);
-		transition:
-			color 0.15s ease,
-			transform 0.15s ease;
-	}
-
-	.review__star:hover {
-		transform: scale(1.1);
-	}
-
-	.review__star--on {
-		color: #d97706;
-	}
-
-	.review__input {
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		padding: 12px 14px;
+	.review__link {
+		display: inline-block;
+		margin-top: 10px;
 		font-size: 14px;
-		resize: vertical;
+		font-weight: 600;
+		color: var(--accent);
 	}
 
-	.review__input:focus {
-		border-color: var(--accent);
-		outline: none;
-	}
-
-	.review__submit {
-		display: flex;
+	.review__link:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 
 	.review__done {

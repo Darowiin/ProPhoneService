@@ -2,39 +2,24 @@
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, heroTrust, heroBadge, getWorkshopStatus } from '../../mocks/db.ts';
-	import { fetchReviews, type ReviewDto } from '../../services/api.ts';
 
 	const workshopStatus = getWorkshopStatus();
 	const isOpen = workshopStatus.isOpen;
 	const openStatus = workshopStatus.message;
 
-	// Sprint-2 card 19: the showcase reads GET /api/reviews; while the backend
-	// endpoint (card 12) answers 404 the landing keeps the mockup reviews.
-	let showcase = $state<ReviewDto[]>(reviews.map((review) => ({
+	// Sprint-2: the backend dropped client reviews in favor of Yandex Maps,
+	// so the showcase is the curated mockup set plus a link to the map listing.
+	const showcase = reviews.map((review) => ({
 		id: review.id,
 		author: review.author,
 		rating: 5,
 		text: review.text,
-		createdAt: review.date
-	})));
+		date: review.date
+	}));
 	let expanded = $state<string | null>(null);
 
-	$effect(() => {
-		fetchReviews(6)
-			.then((list) => {
-				if (list.length > 0) showcase = list;
-			})
-			.catch(() => {
-				// keep the mockup reviews as the fallback
-			});
-	});
-
-	function formatReviewDate(input: string): string {
-		// API dates are ISO; mock fallback uses ready-made display dates.
-		if (/\d{4}-\d{2}-\d{2}/.test(input)) {
-			return new Date(input).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-		}
-		return input;
+	function stars(rating: number): string {
+		return '★'.repeat(rating);
 	}
 </script>
 
@@ -195,13 +180,20 @@
 			<h2 class="h2">Нас советуют своим</h2>
 			<p class="reviews-head__rating">
 				<span class="reviews-head__stars" aria-hidden="true">★</span>
-				{workshopStats.rating.replace(' / 5', '')} · {workshopStats.reviewsCount} отзывов на Яндекс ↗
+				<a
+					class="reviews-head__link"
+					href="https://yandex.ru/maps/?text={encodeURIComponent(workshop.address)}"
+					target="_blank"
+					rel="noreferrer"
+				>
+					{workshopStats.rating.replace(' / 5', '')} · {workshopStats.reviewsCount} отзывов на Яндекс ↗
+				</a>
 			</p>
 		</div>
 		<div class="reviews">
 			{#each showcase as review (review.id)}
 				<article class="review">
-					<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{'★'.repeat(review.rating)}</p>
+					<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{stars(review.rating)}</p>
 					<p class="review__text" class:review__text--clamped={expanded !== review.id && review.text.length > 140}>
 						{review.text}
 					</p>
@@ -212,7 +204,7 @@
 						<span class="review__avatar" aria-hidden="true">{review.author.slice(0, 1)}{review.author.split(' ')[1]?.[0] ?? ''}</span>
 						<div class="review__meta">
 							<span class="review__author">{review.author}</span>
-							<span class="review__date">{formatReviewDate(review.createdAt)}</span>
+							<span class="review__date">{review.date}</span>
 						</div>
 					</footer>
 				</article>
@@ -558,6 +550,17 @@
 
 	.reviews-head__stars {
 		color: var(--accent);
+	}
+
+	.reviews-head__link {
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--accent);
+	}
+
+	.reviews-head__link:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 
 	.reviews {

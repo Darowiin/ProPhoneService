@@ -160,8 +160,13 @@
 					{#if isMockMode}
 						Демо-режим: код вернём прямо в уведомлении — бэкенд не поднят.
 					{:else}
-						Пришлём одноразовый код на эту почту. Регистрация отдельной не нужна.
+						Пришлём одноразовый код на эту почту. Отдельная регистрация не нужна: кабинет
+						создаётся вместе с заявкой на ремонт.
 					{/if}
+				</p>
+				<p class="hint">
+					Ещё нет кабинета? <a class="hint-link" href="/request">Оформите заявку</a> — код придёт
+					на эту почту, и вы войдёте сразу после подтверждения.
 				</p>
 			{:else}
 				<h1 class="title">Осталось ввести код</h1>
@@ -335,20 +340,21 @@
 
 	.code-group {
 		display: grid;
-		grid-template-columns: repeat(6, 1fr);
-		gap: 10px;
+		grid-template-columns: repeat(6, 44px);
+		gap: 8px;
 		margin-top: 20px;
-		max-width: 360px;
+		max-width: 320px;
 	}
 
 	.code-input {
-		aspect-ratio: 3 / 4;
+		width: 44px;
+		height: 52px;
 		text-align: center;
-		font-size: 28px;
+		font-size: 20px;
 		font-weight: 600;
 		background: var(--bg);
 		border: 1px solid var(--border);
-		border-radius: 10px;
+		border-radius: 8px;
 		transition: border-color 0.15s ease;
 	}
 
@@ -374,6 +380,17 @@
 		margin-top: 18px;
 		font-size: 12px;
 		color: var(--muted);
+		line-height: 1.5;
+	}
+
+	.hint-link {
+		color: var(--accent);
+		font-weight: 500;
+	}
+
+	.hint-link:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 
 	.code-links {
