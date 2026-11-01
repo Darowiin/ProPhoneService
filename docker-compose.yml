@@ -21,7 +21,10 @@ services:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
       Auth__MasterEmail: ${MASTER_EMAIL}
-      Email__Password: ${RESEND_API_KEY}
+      Email__Host: ${EMAIL_HOST:-smtp.resend.com}
+      Email__Port: ${EMAIL_PORT:-465}
+      Email__User: ${EMAIL_USER:-resend}
+      Email__Password: ${EMAIL_PASSWORD:-${RESEND_API_KEY:-}}
       Email__FromAddress: ${EMAIL_FROM:-onboarding@resend.dev}
       ASPNETCORE_ENVIRONMENT: Development
     ports:
