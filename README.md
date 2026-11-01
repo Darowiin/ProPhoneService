@@ -85,7 +85,7 @@ cd client && npm ci && cp .env.example .env && npm run dev   # 5173, прокс�
 
 `MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
 
-`RESEND_API_KEY` (env `Email__Password`) + `EMAIL_FROM` (env `Email__FromAddress`) - отправка писем через Resend SMTP; вне Development эти настройки обязательны, в Development без них коды пишутся в лог
+Письма через Resend: `RESEND_API_KEY` + `EMAIL_FROM` (`onboarding@resend.dev` на демо, `noreply@<домен>` после покупки домена); SMTP-параметры по умолчанию `smtp.resend.com`/`465`/`resend`, при смене провайдера переопределяются env `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD`. Вне Development эти настройки обязательны, в Development без них коды пишутся в лог
 
 ### Backend без Docker
 
@@ -148,7 +148,7 @@ npm run preview
 | `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
 | `account`              | аккаунт входа (FK client_id 1:1; role - Client/Master, created_at) |
 | `auth_code`            | одноразовые коды входа на email (code, expires_at, failed_attempts, locked_until) |
-| `review`               | отзывы клиентов (FK client_id; rating, text, created_at) |
+| `notification_log`     | лог уведомлений (FK repair_order_id; recipient, subject, message, status, attempts, created_at) |
 
 ## Архитектура server
 
@@ -194,7 +194,7 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 | GET | `/api/master/stats?period=Month\Quarter\All` | Master | статистика: завершённые ремонты по типам устройств и сумма (по моменту перехода в `Completed`) |
 | PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
 | POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
-| POST | `/api/auth/confirm` | публично | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
+| POST | `/api/auth/confirm` | публично | подтверждение кода: вход существующего аккаунта; аккаунт и клиент создаются только при подтверждении заявки, иначе 400; JWT + refresh в HttpOnly cookie |
 | POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
 
 ## Уведомления (email)
@@ -204,7 +204,11 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 - **Resend SMTP** (`SmtpEmailNotifier`, MailKit) - когда заданы `Email__Password` (API-ключ) и `Email__FromAddress`; хост/порт/пользователь по умолчанию `smtp.resend.com` / `465` / `resend` (465 - неявный TLS, 587/2465/2587 - STARTTLS)
 - **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
 
-Отправителя (`Email__FromAddress`) нужно подтвердить в Resend; для тестов подходит `onboarding@resend.dev` (письма только на адрес владельца ключа). `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
+На демо домен не нужен: Resend разрешает отправителя `onboarding@resend.dev`, но письма уходят **только на email владельца ключа** - на демонстрации получатель один (свой ящик). Полноценная отправка клиентам появляется после подтверждения домена в Resend: добавляются DNS-записи (MX/TXT/DKIM), меняется `EMAIL_FROM`. `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
+
+Отзывы в базе не хранятся: на витрине показываются отзывы, спарсенные с Яндекс Карт (внешний источник)
+
+Смена статуса заказа отправляет клиенту письмо (после успешного сохранения): получатель - `contact_email` заявки или email клиента. Сбой провайдера PATCH не ломает - 3 попытки с backoff (`Notifications:MaxAttempts`, `Notifications:RetryDelay`, базовая пауза удваивается), результат пишется в `notification_log` (кому, когда, по какому заказу, `Sent`/`Failed`, число попыток)
 
 ## Статистика
 
@@ -215,6 +219,7 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 В access-токене есть клеймы `sub` (аккаунт), `client_id` и `role` (`Client`/`Master`)
 
 - **Client** - личный кабинет (`/api/me/orders`) и только собственные заказы: фильтр по `client_id` из клейма, чужой идентификатор неотличим от несуществующего (404), чтобы не раскрывать данные
+- Отдельной регистрации нет: аккаунт создаётся только при подтверждении email заявки (`POST /api/orders` → код → `POST /api/auth/confirm`); дальше это обычный вход по коду, а для неизвестного email без заявки `confirm` отдаёт 400 «Аккаунт не найден»
 - **Master** - панель заказов, смена статусов и правка прайса; публичный прайс читается без токена
 - Мастер-аккаунт: апсерт при старте по `Auth__MasterEmail` (роль Master, вход по коду из лога `INotifier` в демо)
 - Без токена защищённый эндпоинт - 401, с токеном без нужной роли - 403

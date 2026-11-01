@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<AuthService>();
         services.AddScoped<MasterAccountSeeder>();
         services.AddScoped<StatisticsService>();
+        services.AddScoped<StatusNotificationService>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IRefreshTokenStore, InMemoryRefreshTokenStore>();
 

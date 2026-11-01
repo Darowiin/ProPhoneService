@@ -266,7 +266,10 @@ public class AuthEndpointTests
     [Fact]
     public async Task Confirm_CorrectCode_CreatesAccountAndClientWithoutDuplicates()
     {
+        // Регистрации отдельно нет: аккаунт создаётся подтверждением заявки
         var store = new AuthStore();
+        store.PendingOrders.Add(RepairOrder.CreatePending(
+            Guid.NewGuid(), Email, "+79001234567", _nowUtc.UtcDateTime.AddDays(1)));
         using var client = store.CreateFactory().CreateClient();
         await RequestCode(client, Email);
 
@@ -290,6 +293,8 @@ public class AuthEndpointTests
     public async Task Confirm_Twice_ReusesSameAccountAndClient()
     {
         var store = new AuthStore();
+        store.PendingOrders.Add(RepairOrder.CreatePending(
+            Guid.NewGuid(), Email, "+79001234567", _nowUtc.UtcDateTime.AddDays(1)));
         using var client = store.CreateFactory().CreateClient();
         await RequestCode(client, Email);
         var first = await Confirm(client, Email, store.AuthCodes[Email].Code);
@@ -309,15 +314,27 @@ public class AuthEndpointTests
     }
 
     [Fact]
-    public async Task Confirm_ExistingEmail_ReusesClientWithoutDuplicate()
+    public async Task Confirm_NoAccountAndNoPendingOrder_Returns400()
     {
-        var existing = new Client
-        {
-            Id = Guid.NewGuid(),
-            Name = "Иван",
-            Email = Email,
-        };
-        var store = new AuthStore { Clients = [existing] };
+        var store = new AuthStore();
+        using var client = store.CreateFactory().CreateClient();
+        await RequestCode(client, Email);
+
+        var response = await Confirm(client, Email, store.AuthCodes[Email].Code);
+
+        // Вход без заявки не регистрирует: аккаунт и клиент не создаются
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(store.AddedClients);
+        Assert.Empty(store.AddedAccounts);
+        Assert.True(store.AuthCodes.ContainsKey(Email));
+    }
+
+    [Fact]
+    public async Task Confirm_ExistingAccount_ReusesAccountWithoutDuplicates()
+    {
+        var existingClient = new Client { Id = Guid.NewGuid(), Name = "Иван", Email = Email };
+        var existingAccount = new Account { Id = Guid.NewGuid(), ClientId = existingClient.Id };
+        var store = new AuthStore { Clients = [existingClient], Accounts = [existingAccount] };
         using var client = store.CreateFactory().CreateClient();
         await RequestCode(client, Email);
 
@@ -325,7 +342,27 @@ public class AuthEndpointTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
-        Assert.Equal(existing.Id, auth!.ClientId);
+        Assert.Equal(existingAccount.Id, auth!.AccountId);
+        Assert.Equal(existingClient.Id, auth.ClientId);
+        Assert.Empty(store.AddedClients);
+        Assert.Empty(store.AddedAccounts);
+    }
+
+    [Fact]
+    public async Task Confirm_ClientWithoutAccountWithPendingOrder_CreatesAccountOnly()
+    {
+        var existingClient = new Client { Id = Guid.NewGuid(), Name = "Иван", Email = Email };
+        var store = new AuthStore { Clients = [existingClient] };
+        store.PendingOrders.Add(RepairOrder.CreatePending(
+            Guid.NewGuid(), Email, null, _nowUtc.UtcDateTime.AddDays(1)));
+        using var client = store.CreateFactory().CreateClient();
+        await RequestCode(client, Email);
+
+        var response = await Confirm(client, Email, store.AuthCodes[Email].Code);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        Assert.Equal(existingClient.Id, auth!.ClientId);
         Assert.Empty(store.AddedClients);
         Assert.Single(store.AddedAccounts);
     }

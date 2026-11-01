@@ -62,6 +62,16 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     }
 
     /// <inheritdoc />
+    public Task<RepairOrder?> GetForStatusChangeAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        // Без AsNoTracking: заказ меняется, история статуса дописывается; клиент нужен для уведомления
+        return Set
+            .Include(x => x.Client)
+            .Include(x => x.StatusHistory)
+            .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<DeviceType, int>> CountCompletedByDeviceTypeAsync(
         DateTime? fromUtc,
         DateTime? toUtc,

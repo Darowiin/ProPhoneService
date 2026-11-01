@@ -68,6 +68,14 @@ builder.Services.AddSingleton(jwtOptions);
 
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<AuthOptions>>().Value);
 
+builder.Services.AddOptions<NotificationOptions>()
+    .Bind(builder.Configuration.GetSection("Notifications"))
+    .Validate(o => o.MaxAttempts >= 1, "Notifications:MaxAttempts должен быть не меньше 1")
+    .Validate(o => o.RetryDelay >= TimeSpan.Zero, "Notifications:RetryDelay не может быть отрицательным")
+    .ValidateOnStart();
+
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<NotificationOptions>>().Value);
+
 // Проверка access-токена: симметричный ключ, issuer/audience, роль из клейма "role"
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

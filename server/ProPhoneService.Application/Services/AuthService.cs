@@ -145,8 +145,22 @@ public class AuthService(
                 : AuthOutcome.Failure(400, "Неверный код", "Проверьте код из сообщения");
         }
 
-        // Подтверждение email: клиент и аккаунт создаются (если email ещё нет) или используются существующие
+        var pendingOrders = await orderRepository.GetPendingByEmailAsync(normalized, cancellationToken);
+
         var client = await clientRepository.GetByEmailAsync(normalized, cancellationToken);
+        var account = client is null
+            ? null
+            : await accountRepository.GetByClientIdAsync(client.Id, cancellationToken);
+
+        // Регистрации отдельно нет: аккаунт создаётся только вместе с подтверждением заявки
+        // Без аккаунта и без заявки - вход недоступен
+        if ((client is null || account is null) && pendingOrders.Count == 0)
+        {
+            return AuthOutcome.Failure(
+                400,
+                "Аккаунт не найден",
+                "Вход доступен после оформления заявки: подтвердите email из заявки на ремонт");
+        }
 
         var isNewClient = client is null;
         client ??= new Client
@@ -157,7 +171,6 @@ public class AuthService(
             Email = normalized,
         };
 
-        var account = await accountRepository.GetByClientIdAsync(client.Id, cancellationToken);
         var isNewAccount = account is null;
         account ??= new Account { Id = Guid.NewGuid(), ClientId = client.Id };
 
@@ -171,8 +184,7 @@ public class AuthService(
             await accountRepository.AddAsync(account, cancellationToken);
         }
 
-        // Неподтверждённые заявки с этим email привязываем к клиенту и активируем
-        var pendingOrders = await orderRepository.GetPendingByEmailAsync(normalized, cancellationToken);
+        // Подтверждённые заявки привязываем к клиенту и активируем
         foreach (var pendingOrder in pendingOrders)
         {
             pendingOrder.ConfirmClient(client.Id);
