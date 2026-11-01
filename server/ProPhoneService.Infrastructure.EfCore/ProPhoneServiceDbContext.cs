@@ -35,11 +35,6 @@ public class ProPhoneServiceDbContext(DbContextOptions<ProPhoneServiceDbContext>
     public DbSet<Service> Services => Set<Service>();
 
     /// <summary>
-    /// Отзывы клиентов
-    /// </summary>
-    public DbSet<Review> Reviews => Set<Review>();
-
-    /// <summary>
     /// Лог отправки уведомлений
     /// </summary>
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();

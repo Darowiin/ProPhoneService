@@ -326,41 +326,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.ToTable("repair_status_history");
                 });
 
-            modelBuilder.Entity("ProPhoneService.Domain.Model.Review", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("integer")
-                        .HasColumnName("rating");
-
-                    b.Property<string>("Text")
-                        .HasColumnType("text")
-                        .HasColumnName("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.ToTable("review", t =>
-                        {
-                            t.HasCheckConstraint("CK_review_rating_range", "\"rating\" BETWEEN 1 AND 5");
-                        });
-                });
-
             modelBuilder.Entity("ProPhoneService.Domain.Model.Service", b =>
                 {
                     b.Property<Guid>("Id")
@@ -550,17 +515,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .IsRequired();
 
                     b.Navigation("RepairOrder");
-                });
-
-            modelBuilder.Entity("ProPhoneService.Domain.Model.Review", b =>
-                {
-                    b.HasOne("ProPhoneService.Domain.Model.Client", "Client")
-                        .WithMany()
-                        .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.Client", b =>
