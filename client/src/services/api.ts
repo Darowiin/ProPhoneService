@@ -9,6 +9,8 @@
 // service ids; the API computes the total price from those ids.
 
 import { accountMock, reviews as mockReviews, serviceMeta, workshop } from '../mocks/db.ts';
+import { refresh as authServiceRefresh } from './auth.ts';
+import { bearerToken, dropSession } from '../lib/auth/session.svelte.ts';
 
 export type RepairStatus =
 	| 'Created'
@@ -28,6 +30,8 @@ export interface RepairOrderDto {
 	serviceName: string | null;
 	price: number | null;
 	priceFrom: boolean;
+	/** Описание проблемы со слов клиента (V3). */
+	problem: string | null;
 	status: RepairStatus | null;
 	createdAt: string;
 	preferredVisitAt: string | null;
@@ -56,16 +60,21 @@ export interface ServiceDto {
 export interface CreateOrderPayload {
 	name: string;
 	phone: string | null;
+	/** Guest orders require an email: it goes through the code confirmation. */
 	email: string | null;
 	deviceType: 'Phone' | 'Tablet' | 'Laptop';
 	deviceManufacturer: string;
 	deviceModel: string;
 	preferredVisitAt: string;
 	serviceIds: string[];
+	/** Описание проблемы со слов клиента (V3). */
+	problemDescription: string | null;
 }
 
 export interface CreateOrderResult {
 	id: string;
+	/** True — заявка создана как PendingContact, подтвердите email кодом. */
+	requiresEmailConfirmation: boolean;
 	number: string;
 	status: RepairStatus;
 }
@@ -127,6 +136,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена аккумулятора',
 		price: 3490,
 		priceFrom: false,
+		problem: null,
 		status: 'InProgress',
 		createdAt: '2026-10-01T10:24:00Z',
 		preferredVisitAt: '2026-10-01T11:00:00Z'
@@ -139,6 +149,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена дисплея',
 		price: 9900,
 		priceFrom: true,
+		problem: null,
 		status: 'InDiagnostic',
 		createdAt: '2026-10-01T09:10:00Z',
 		preferredVisitAt: null
@@ -151,6 +162,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Не заряжается',
 		price: 2490,
 		priceFrom: true,
+		problem: null,
 		status: 'Created',
 		createdAt: '2026-10-01T08:45:00Z',
 		preferredVisitAt: '2026-10-01T15:00:00Z'
@@ -163,6 +175,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена заднего стекла',
 		price: 5900,
 		priceFrom: false,
+		problem: null,
 		status: 'InProgress',
 		createdAt: '2026-09-30T16:20:00Z',
 		preferredVisitAt: null
@@ -175,6 +188,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена дисплея',
 		price: 9900,
 		priceFrom: false,
+		problem: null,
 		status: 'Completed',
 		createdAt: '2026-08-12T14:05:00Z',
 		preferredVisitAt: null
@@ -187,6 +201,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена разъёма зарядки',
 		price: 2490,
 		priceFrom: false,
+		problem: null,
 		status: 'Completed',
 		createdAt: '2026-05-24T12:00:00Z',
 		preferredVisitAt: null
@@ -199,6 +214,7 @@ const orders: RepairOrderDto[] = [
 		serviceName: 'Замена аккумулятора',
 		price: 2990,
 		priceFrom: false,
+		problem: null,
 		status: 'Completed',
 		createdAt: '2026-02-03T10:30:00Z',
 		preferredVisitAt: null
@@ -321,14 +337,17 @@ interface BackendOrderDto {
 	statusTimeline: RepairStatusHistoryDto[];
 }
 
-/** GET /orders/{id} response — the list DTO omits the client, the detail one has it. */
+/** GET /orders/{id} or GET /me/orders/{id} — the list DTO omits these fields. */
 interface BackendOrderDetailDto extends BackendOrderDto {
 	client: { id: string; name: string; phone: string; email: string | null } | null;
-	totalPrice: number | null;
+	services: { serviceId: string; name: string; price: number }[];
+	totalPrice: number;
+	problemDescription: string | null;
 }
 
 interface BackendCreateOrderResponse {
 	id: string;
+	requiresEmailConfirmation: boolean;
 }
 
 function asFrontendOrder(order: BackendOrderDto): RepairOrderDto {
@@ -340,6 +359,7 @@ function asFrontendOrder(order: BackendOrderDto): RepairOrderDto {
 		serviceName: null,
 		price: null,
 		priceFrom: false,
+		problem: null,
 		status: order.status,
 		createdAt: order.createdAt,
 		preferredVisitAt: order.preferredVisitAt,
@@ -348,9 +368,23 @@ function asFrontendOrder(order: BackendOrderDto): RepairOrderDto {
 }
 
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-	const headers = new Headers(init?.headers);
-	if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-	const response = await fetch(`${apiBase}${path}`, { ...init, headers });
+	const send = async (): Promise<Response> => {
+		const headers = new Headers(init?.headers);
+		if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+		const token = bearerToken();
+		if (token) headers.set('Authorization', `Bearer ${token}`);
+		return fetch(`${apiBase}${path}`, { ...init, headers });
+	};
+
+	let response = await send();
+
+	// Access token lives ~15 minutes: on 401 exchange the refresh cookie once
+	// and replay the request; a second 401 propagates to the caller.
+	if (response.status === 401 && !init?.headers) {
+		const refreshed = await authRefresh();
+		if (refreshed) response = await send();
+	}
+
 	if (!response.ok) {
 		let message = `API вернул ${response.status}`;
 		let fieldErrors: Record<string, string[]> = {};
@@ -371,13 +405,31 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	return (await response.json()) as T;
 }
 
+/**
+ * Exchanges the HttpOnly refresh cookie for a fresh access token.
+ * Returns true when the caller may replay the request.
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
+function authRefresh(): Promise<boolean> {
+	refreshInFlight ??= (async () => {
+		const refreshed = await authServiceRefresh();
+		if (refreshed) return true;
+		dropSession();
+		return false;
+	})().finally(() => {
+		refreshInFlight = null;
+	});
+	return refreshInFlight;
+}
+
 const delay = (ms = 250) => {
 	const { promise, resolve } = Promise.withResolvers<void>();
 	setTimeout(resolve, ms);
 	return promise;
 };
 
-/** Sprint-2 card 7: optional from/to filter by creation date (ISO yyyy-mm-dd). */
+/** Sprint-2 card 7: filter by the preferred visit date (ISO yyyy-mm-dd). */
 interface FetchOrdersOptions {
 	from?: string;
 	to?: string;
@@ -389,11 +441,9 @@ export async function fetchOrders(options: FetchOrdersOptions = {}): Promise<Rep
 		return [...orders];
 	}
 
-	// Backend card 7 filters by from/to on this endpoint; until it ships the
-	// params are simply ignored by the current API.
 	const params = new URLSearchParams();
-	if (options.from) params.set('from', options.from);
-	if (options.to) params.set('to', options.to);
+	if (options.from) params.set('visitFrom', `${options.from}T00:00:00Z`);
+	if (options.to) params.set('visitTo', `${options.to}T23:59:59Z`);
 	const suffix = params.size > 0 ? `&${params.toString()}` : '';
 
 	const result: RepairOrderDto[] = [];
@@ -403,88 +453,162 @@ export async function fetchOrders(options: FetchOrdersOptions = {}): Promise<Rep
 		if (items.length < apiPageSize) break;
 	}
 
-	// The list DTO carries no client; the detail endpoint does. Warm the names
-	// for the loaded rows; a failed detail fetch just keeps the client empty.
+	// The list DTO carries no client/problem/price; the detail endpoint does.
+	// Warm them for the loaded rows (V3 panel shows client, problem, price).
 	await Promise.all(
 		result.map(async (order) => {
 			try {
 				const detail = await request<BackendOrderDetailDto>(`/orders/${order.id}`);
 				order.clientName = detail.client?.name ?? null;
+				order.problem = detail.problemDescription ?? null;
+				order.price = Number(detail.totalPrice);
+				order.priceFrom = false;
+				order.serviceName = detail.services?.map((service) => service.name).join(', ') || null;
 			} catch {
-				// leave clientName as-is
+				// leave the row as-is
 			}
 		})
 	);
 	return result;
 }
 
-// Sprint-2 card 8 does not ship PUT/POST/DELETE /services yet: a write that
-// answers 404 is recorded in a local overlay merged into every read, so the
-// master panel edits stay visible. Successful real writes clear their
-// overlay entry; once the card lands the overlay stays empty.
-interface PriceOverlay {
-	created: ServiceDto[];
-	updates: Map<string, ServiceInput>;
-	hidden: Set<string>;
+// Sprint-2 price CRUD (cards 8–9) is live on the backend: writes go straight
+// to the API; the hidden service disappears from the public list via the
+// cache invalidation on the backend.
+
+export interface ServiceInput {
+	name: string;
+	price: number;
+	description: string | null;
 }
 
-const priceOverlay: PriceOverlay = { created: [], updates: new Map(), hidden: new Set() };
+export async function createService(input: ServiceInput): Promise<ServiceDto> {
+	if (isMockMode) return mockCreateService(input);
+	return asService(await request<Record<string, unknown>>('/services', { method: 'POST', body: JSON.stringify(input) }));
+}
 
-function asService(raw: Record<string, unknown>): ServiceDto {
+async function mockCreateService(input: ServiceInput): Promise<ServiceDto> {
+	await delay(300);
+	const created: ServiceDto = { id: `local-${crypto.randomUUID()}`, isActive: true, ...input };
+	mockServices.push(created);
+	return { ...created };
+}
+
+export async function updateService(id: string, input: ServiceInput): Promise<void> {
+	if (isMockMode) return mockUpdateService(id, input);
+	await request<void>(`/services/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) });
+}
+
+async function mockUpdateService(id: string, input: ServiceInput): Promise<void> {
+	await delay(300);
+	const local = mockServices.find((item) => item.id === id);
+	if (!local) throw new ApiError('Услуга не найдена', 404);
+	local.name = input.name;
+	local.price = input.price;
+	local.description = input.description;
+}
+
+/** Sprint-2 card 8: hiding, not deleting (is_active=false). */
+export async function hideService(id: string): Promise<void> {
+	if (isMockMode) return mockHideService(id);
+	await request<void>(`/services/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+async function mockHideService(id: string): Promise<void> {
+	await delay(300);
+	const local = mockServices.find((item) => item.id === id);
+	if (!local) throw new ApiError('Услуга не найдена', 404);
+	local.isActive = false;
+}
+
+export function asService(raw: Record<string, unknown>): ServiceDto {
 	return {
 		id: String(raw['id'] ?? ''),
 		name: String(raw['name'] ?? ''),
 		price: Number(raw['price'] ?? 0),
 		description: (raw['description'] as string | null) ?? null,
-		// Card 8 adds the flag; without it every service is active.
-		isActive: (raw['isActive'] as boolean | undefined) ?? (raw['is_active'] as boolean | undefined) ?? true
+		isActive: true
 	};
 }
 
-/** Merges local create/update/hide edits into an API list (API mode). */
-function applyPriceOverlay(list: ServiceDto[]): ServiceDto[] {
-	const merged = list.map((service) => {
-		const update = priceOverlay.updates.get(service.id);
-		return update ? { ...service, ...update } : service;
-	});
-	for (const id of priceOverlay.hidden) {
-		const service = merged.find((item) => item.id === id);
-		if (service) service.isActive = false;
+// ─── Sprint 2: master statistics dashboard (card 10/17) ─────────────────────
+
+export type StatsPeriod = 'month' | 'quarter' | 'all';
+
+export interface MasterStatsDto {
+	/** Completed repairs grouped by device type, e.g. «Phone» → 12. */
+	repairsByType: Record<string, number>;
+	/** Total price of completed orders in the period. */
+	completedSum: number;
+	/** Number of completed orders in the period. */
+	completedCount: number;
+}
+
+export async function fetchMasterStats(period: StatsPeriod): Promise<MasterStatsDto> {
+	if (isMockMode) return mockMasterStats(period);
+	try {
+		const raw = await request<{
+			fromUtc: string | null;
+			toUtc: string | null;
+			completedTotalPrice: number;
+			completedByDeviceType: { type: string; count: number }[];
+		}>(`/master/stats?period=${period.charAt(0).toUpperCase()}${period.slice(1)}`);
+
+		return {
+			repairsByType: Object.fromEntries(
+				raw.completedByDeviceType.map((item) => [item.type, item.count])
+			),
+			completedSum: Number(raw.completedTotalPrice),
+			completedCount: raw.completedByDeviceType.reduce((sum, item) => sum + item.count, 0)
+		};
+	} catch (error) {
+		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return mockMasterStats(period);
+		throw error;
 	}
-	return [...priceOverlay.created, ...merged];
 }
 
-async function mockServiceList(): Promise<ServiceDto[]> {
-	await delay();
-	return mockServices.map((service) => ({ ...service }));
+/** Demo data in the mockup's spirit: October 2026, mixed device types. */
+async function mockMasterStats(period: StatsPeriod): Promise<MasterStatsDto> {
+	await delay(250);
+	const all = {
+		Phone: 14,
+		Tablet: 4,
+		Laptop: 2
+	};
+	const month = { Phone: 6, Tablet: 2, Laptop: 1 };
+	const quarter = { Phone: 11, Tablet: 3, Laptop: 2 };
+	if (period === 'month') return { repairsByType: month, completedSum: 24890, completedCount: 9 };
+	if (period === 'quarter') return { repairsByType: quarter, completedSum: 84340, completedCount: 16 };
+	return { repairsByType: all, completedSum: 129800, completedCount: 20 };
 }
 
-/** Public services: active only; overlay-aware and 404-safe. */
+// ─── Public price + order flow (cards 3, 7, 8) ──────────────────────────────
+
 export async function fetchServices(): Promise<ServiceDto[]> {
-	if (isMockMode) return (await mockServiceList()).filter((service) => service.isActive);
-	let raw: ServiceDto[];
-	try {
-		raw = (await request<Record<string, unknown>[]>('/services')).map(asService);
-	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) {
-			return (await mockServiceList()).filter((service) => service.isActive);
-		}
-		throw error;
-	}
-	return applyPriceOverlay(raw).filter((service) => service.isActive);
+	if (isMockMode) return mockServices.filter((service) => service.isActive);
+	return (await request<Record<string, unknown>[]>('/services')).map(asService);
 }
 
-/** Master panel list — includes hidden services (public list shows active only). */
 export async function fetchMasterServices(): Promise<ServiceDto[]> {
-	if (isMockMode) return mockServiceList();
-	let raw: ServiceDto[];
-	try {
-		raw = (await request<Record<string, unknown>[]>('/services?includeInactive=true')).map(asService);
-	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) return mockServiceList();
-		throw error;
-	}
-	return applyPriceOverlay(raw);
+	// Same public list: the backend returns active services only (card 8).
+	return fetchServices();
+}
+
+export function asFrontendOrderDetail(order: BackendOrderDetailDto): RepairOrderDto {
+	return {
+		id: order.id,
+		number: order.id,
+		clientName: order.client?.name ?? null,
+		deviceName: [order.device.manufacturer, order.device.model].filter(Boolean).join(' '),
+		serviceName: order.services.map((service) => service.name).join(', ') || null,
+		price: Number(order.totalPrice),
+		priceFrom: false,
+		problem: order.problemDescription ?? null,
+		status: order.status,
+		createdAt: order.createdAt,
+		preferredVisitAt: order.preferredVisitAt,
+		statusTimeline: order.statusTimeline
+	};
 }
 
 export async function fetchOrderById(id: string): Promise<RepairOrderDto> {
@@ -494,9 +618,7 @@ export async function fetchOrderById(id: string): Promise<RepairOrderDto> {
 		if (!order) throw new ApiError('Заявка не найдена', 404);
 		return { ...order };
 	}
-	const order = (await fetchOrders()).find((item) => item.id.toLowerCase() === id.toLowerCase());
-	if (!order) throw new ApiError('Заявка не найдена', 404);
-	return order;
+	return asFrontendOrderDetail(await request<BackendOrderDetailDto>(`/orders/${encodeURIComponent(id)}`));
 }
 
 export async function createOrder(payload: CreateOrderPayload): Promise<CreateOrderResult> {
@@ -513,11 +635,12 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 			serviceName: selectedServices.map((service) => serviceMeta(service.name).displayName).join(', ') || 'Диагностика',
 			price: selectedServices.reduce((sum, service) => sum + service.price, 0),
 			priceFrom: false,
+			problem: payload.problemDescription,
 			status: 'Created',
 			createdAt: new Date().toISOString(),
 			preferredVisitAt: payload.preferredVisitAt
 		});
-		return { id: orderId, number, status: 'Created' };
+		return { id: orderId, requiresEmailConfirmation: true, number, status: 'Created' };
 	}
 
 	const result = await request<BackendCreateOrderResponse>('/orders', {
@@ -530,10 +653,16 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 			deviceManufacturer: payload.deviceManufacturer,
 			deviceModel: payload.deviceModel,
 			preferredVisitAt: payload.preferredVisitAt,
-			serviceIds: payload.serviceIds
+			serviceIds: payload.serviceIds,
+			problemDescription: payload.problemDescription
 		})
 	});
-	return { id: result.id, number: result.id, status: 'Created' };
+	return {
+		id: result.id,
+		requiresEmailConfirmation: Boolean(result.requiresEmailConfirmation),
+		number: result.id,
+		status: 'Created'
+	};
 }
 
 export async function changeOrderStatus(
@@ -564,10 +693,12 @@ export async function changeOrderStatus(
 	});
 }
 
-// ─── Sprint 2: client account (cards 4, 14, 18) ─────────────────────────────
+// ─── Client account (cards 4, 14, 18) ───────────────────────────────────────
 
 export interface AccountOrderDto {
 	id: string;
+	clientName: string | null;
+	clientPhone: string | null;
 	device: string;
 	repair: string;
 	/** ISO date of the order creation. */
@@ -587,61 +718,81 @@ export interface ReviewDto {
 	createdAt: string;
 }
 
-function mapAccountOrder(raw: Record<string, unknown>): AccountOrderDto {
-	// Contract from card 4 (GET /api/me/orders/{id}): device, services, price,
-	// status timeline. Field names are not settled until the backend lands;
-	// map defensively so a missing field degrades to an empty cell.
-	const device = String(raw['device'] ?? '');
-	const repair = String(raw['repair'] ?? raw['services'] ?? '');
+function mapMeOrder(raw: BackendOrderListItemLike): AccountOrderDto {
 	return {
-		id: String(raw['id'] ?? ''),
-		device,
-		repair,
-		createdAt: String(raw['createdAt'] ?? ''),
-		status: (raw['status'] as AccountOrderDto['status']) ?? 'Ready',
-		price: Number(raw['price'] ?? 0),
-		expectedReady: (raw['expectedReady'] as string | null) ?? null,
-		timeline: Array.isArray(raw['timeline'])
-			? (raw['timeline'] as AccountOrderDto['timeline'])
-			: []
+		id: raw.id,
+		clientName: null,
+		clientPhone: null,
+		device: [raw.device.manufacturer, raw.device.model].filter(Boolean).join(' '),
+		repair: 'Диагностика',
+		createdAt: raw.createdAt,
+		status: (raw.status as AccountOrderDto['status']) ?? 'Ready',
+		price: 0,
+		expectedReady: null,
+		timeline: (raw.statusTimeline ?? []).map((history) => ({
+			label: statusLabels[history.status],
+			at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+		}))
 	};
 }
 
-/** Orders of the signed-in client. 404 (endpoint not shipped yet) → demo account. */
-export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
-	if (isMockMode) return mockMyOrders();
-	try {
-		const items = await request<Record<string, unknown>[]>('/me/orders');
-		return items.map(mapAccountOrder);
-	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) {
-			const mock = await mockMyOrders();
-			return mock;
-		}
-		throw error;
-	}
+interface BackendOrderListItemLike {
+	id: string;
+	status: string | null;
+	device: { manufacturer: string; model: string };
+	createdAt: string;
+	statusTimeline?: RepairStatusHistoryDto[];
 }
 
-async function mockMyOrders(): Promise<AccountOrderDto[]> {
-	await delay();
-	return accountMock.orders.map((order) => ({ ...order, timeline: [...order.timeline] }));
+/** Orders of the signed-in client (mock mode: the demo account from the mockup). */
+export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
+	if (isMockMode) {
+		await delay();
+		return accountMock.orders.map((order) => ({ ...order, timeline: [...order.timeline] }));
+	}
+
+	const items = await request<BackendOrderListItemLike[]>('/me/orders');
+	const result = items.map(mapMeOrder);
+
+	// List DTO carries no services/price — warm the card data per row.
+	await Promise.all(
+		result.map(async (order) => {
+			try {
+				const detail = await request<BackendOrderDetailDto>(`/me/orders/${encodeURIComponent(order.id)}`);
+				order.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
+				order.price = Number(detail.totalPrice);
+				order.clientName = detail.client?.name ?? null;
+				order.clientPhone = detail.client?.phone ?? null;
+				order.timeline = detail.statusTimeline.map((history) => ({
+					label: statusLabels[history.status],
+					at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+				}));
+			} catch {
+				// keep the row as-is
+			}
+		})
+	);
+	return result;
 }
 
 export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {
-	if (isMockMode) return mockMyOrderById(id);
-	try {
-		return await request<Record<string, unknown>>(`/me/orders/${encodeURIComponent(id)}`).then(mapAccountOrder);
-	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) return mockMyOrderById(id);
-		throw error;
+	if (isMockMode) {
+		await delay();
+		const order = accountMock.orders.find((item) => item.id === id);
+		if (!order) throw new ApiError('Заявка не найдена', 404);
+		return { ...order, timeline: [...order.timeline] };
 	}
-}
-
-async function mockMyOrderById(id: string): Promise<AccountOrderDto> {
-	await delay();
-	const order = accountMock.orders.find((item) => item.id === id);
-	if (!order) throw new ApiError('Заявка не найдена', 404);
-	return { ...order, timeline: [...order.timeline] };
+	const detail = await request<BackendOrderDetailDto>(`/me/orders/${encodeURIComponent(id)}`);
+	const mapped = mapMeOrder({ id: detail.id, status: detail.status, device: detail.device, createdAt: detail.createdAt, statusTimeline: detail.statusTimeline });
+	mapped.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
+	mapped.price = Number(detail.totalPrice);
+	mapped.clientName = detail.client?.name ?? null;
+	mapped.clientPhone = detail.client?.phone ?? null;
+	mapped.timeline = detail.statusTimeline.map((history) => ({
+		label: statusLabels[history.status],
+		at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+	}));
+	return mapped;
 }
 
 /** Posts a review for a completed order; a repeated review fails with 409. */
@@ -651,165 +802,59 @@ export async function createReview(
 	text: string,
 	author = 'Клиент'
 ): Promise<ReviewDto> {
-	if (isMockMode) return mockCreateReview(rating, text, author);
+	if (isMockMode) {
+		await delay(350);
+		if (accountMock.review.text) throw new ApiError('Отзыв уже оставлен', 409);
+		accountMock.review.text = text;
+		accountMock.review.rating = rating;
+		return {
+			id: crypto.randomUUID(),
+			author,
+			rating,
+			text,
+			createdAt: new Date().toISOString()
+		};
+	}
 	try {
 		return await request<ReviewDto>(`/orders/${encodeURIComponent(orderId)}/review`, {
 			method: 'POST',
 			body: JSON.stringify({ rating, text })
 		});
 	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) return mockCreateReview(rating, text, author);
+		// Card 11 is not merged into the backend yet — the endpoint answers 404.
+		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+			throw new ApiError('Отзывы появятся в следующем обновлении сервиса', error.status);
+		}
 		throw error;
 	}
-}
-
-async function mockCreateReview(rating: number, text: string, author: string): Promise<ReviewDto> {
-	await delay(350);
-	if (accountMock.review.text) throw new ApiError('Отзыв уже оставлен', 409);
-	accountMock.review.text = text;
-	accountMock.review.rating = rating;
-	return {
-		id: crypto.randomUUID(),
-		author,
-		rating,
-		text,
-		createdAt: new Date().toISOString()
-	};
 }
 
 /** Public reviews showcase (mock mode: the landing mockup reviews). */
 export async function fetchReviews(limit = 6): Promise<ReviewDto[]> {
-	if (isMockMode) return mockReviewList(limit);
+	if (isMockMode) {
+		await delay();
+		return mockReviews.slice(0, limit).map((review) => ({
+			id: review.id,
+			author: review.author,
+			rating: 5,
+			text: review.text,
+			// Display date from the mockup («24 сентября 2026»), not a synthetic ISO stamp.
+			createdAt: review.date
+		}));
+	}
 	try {
 		return await request<ReviewDto[]>(`/reviews?limit=${limit}`);
 	} catch (error) {
-		if (error instanceof ApiError && error.status === 404) return mockReviewList(limit);
+		// Card 12 is not merged into the backend yet — keep the landing fallback.
+		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) {
+			return mockReviews.slice(0, limit).map((review) => ({
+				id: review.id,
+				author: review.author,
+				rating: 5,
+				text: review.text,
+				createdAt: review.date
+			}));
+		}
 		throw error;
 	}
-}
-
-async function mockReviewList(limit: number): Promise<ReviewDto[]> {
-	await delay();
-	return mockReviews.slice(0, limit).map((review) => ({
-		id: review.id,
-		author: review.author,
-		rating: 5,
-		text: review.text,
-		// Display date from the mockup («24 сентября 2026»), not a synthetic ISO stamp.
-		createdAt: review.date
-	}));
-}
-
-// ─── Sprint 2: master price management (cards 8, 16) ────────────────────────
-
-export interface ServiceInput {
-	name: string;
-	price: number;
-	description: string | null;
-}
-
-export async function createService(input: ServiceInput): Promise<ServiceDto> {
-	if (isMockMode) return mockCreateService(input);
-	try {
-		return asService(await request<Record<string, unknown>>('/services', { method: 'POST', body: JSON.stringify(input) }));
-	} catch (error) {
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return mockCreateService(input);
-		throw error;
-	}
-}
-
-async function mockCreateService(input: ServiceInput): Promise<ServiceDto> {
-	await delay(300);
-	const created: ServiceDto = { id: `local-${crypto.randomUUID()}`, isActive: true, ...input };
-	priceOverlay.created.push(created);
-	return { ...created };
-}
-
-export async function updateService(id: string, input: ServiceInput): Promise<void> {
-	if (isMockMode) return mockUpdateService(id, input);
-	try {
-		await request<void>(`/services/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(input) });
-	} catch (error) {
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return mockUpdateService(id, input);
-		throw error;
-	}
-}
-
-async function mockUpdateService(id: string, input: ServiceInput): Promise<void> {
-	await delay(300);
-	const local = priceOverlay.created.find((service) => service.id === id) ?? mockServices.find((item) => item.id === id);
-	if (local) {
-		local.name = input.name;
-		local.price = input.price;
-		local.description = input.description;
-		return;
-	}
-	// A real backend service edited before card 8 ships.
-	priceOverlay.updates.set(id, input);
-}
-
-/** Sprint-2 card 8: hiding, not deleting (is_active=false). */
-export async function hideService(id: string): Promise<void> {
-	if (isMockMode) return mockHideService(id);
-	try {
-		await request<void>(`/services/${encodeURIComponent(id)}`, { method: 'DELETE' });
-	} catch (error) {
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return mockHideService(id);
-		throw error;
-	}
-}
-
-async function mockHideService(id: string): Promise<void> {
-	await delay(300);
-	const localCreated = priceOverlay.created.find((service) => service.id === id);
-	if (localCreated) {
-		localCreated.isActive = false;
-		return;
-	}
-	if (mockServices.some((item) => item.id === id)) {
-		const local = mockServices.find((item) => item.id === id);
-		if (local) local.isActive = false;
-		return;
-	}
-	// A real backend service hidden before card 8 ships.
-	priceOverlay.hidden.add(id);
-	priceOverlay.updates.delete(id);
-}
-
-// ─── Sprint 2: master statistics dashboard (card 10/17) ─────────────────────
-
-export type StatsPeriod = 'month' | 'quarter' | 'all';
-
-export interface MasterStatsDto {
-	/** Completed repairs grouped by device type, e.g. «Phone» → 12. */
-	repairsByType: Record<string, number>;
-	/** Total price of completed orders in the period. */
-	completedSum: number;
-	/** Number of completed orders in the period. */
-	completedCount: number;
-}
-
-export async function fetchMasterStats(period: StatsPeriod): Promise<MasterStatsDto> {
-	if (isMockMode) return mockMasterStats(period);
-	try {
-		return await request<MasterStatsDto>(`/master/stats?period=${period}`);
-	} catch (error) {
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return mockMasterStats(period);
-		throw error;
-	}
-}
-
-/** Demo data in the mockup's spirit: October 2026, mixed device types. */
-async function mockMasterStats(period: StatsPeriod): Promise<MasterStatsDto> {
-	await delay(250);
-	const all = {
-		Phone: 14,
-		Tablet: 4,
-		Laptop: 2
-	};
-	const month = { Phone: 6, Tablet: 2, Laptop: 1 };
-	const quarter = { Phone: 11, Tablet: 3, Laptop: 2 };
-	if (period === 'month') return { repairsByType: month, completedSum: 24890, completedCount: 9 };
-	if (period === 'quarter') return { repairsByType: quarter, completedSum: 84340, completedCount: 16 };
-	return { repairsByType: all, completedSum: 129800, completedCount: 20 };
 }

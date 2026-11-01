@@ -5,9 +5,16 @@
 	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import { session } from '#lib/auth/session.svelte.ts';
 	import { showToast } from '#lib/components/toast.svelte.ts';
-	import { fetchMyOrders, type AccountOrderDto } from '../../../services/api.ts';
+	import { fetchMyOrders, fetchMyOrderById, type AccountOrderDto } from '../../../services/api.ts';
+
+	// The API session carries only email/role; the display name and phone come
+	// from the client record attached to the first fetched order detail.
+	let profileName = $state<string | null>(null);
+	let profilePhone = $state<string | null>(null);
 
 	const ready = $derived(session.ready && !!session.user);
+	const displayName = $derived(profileName ?? session.user?.email ?? '');
+	const contactText = $derived(profilePhone ?? session.user?.email ?? '');
 
 	let orders = $state<AccountOrderDto[]>([]);
 	let loading = $state(true);
@@ -34,7 +41,7 @@
 
 	function initials(name: string): string {
 		return name
-			.split(/\s+/)
+			.split(' ').map((part) => part.trim()).filter(Boolean)
 			.slice(0, 2)
 			.map((part) => part[0]?.toUpperCase() ?? '')
 			.join('');
@@ -55,6 +62,20 @@
 			.finally(() => (loading = false));
 	});
 
+	// Fill name/phone from the first order's client record (one extra request).
+	$effect(() => {
+		const first = orders[0];
+		if (!first || profileName) return;
+		fetchMyOrderById(first.id)
+			.then((detail) => {
+				profileName = detail.clientName ?? null;
+				profilePhone = detail.clientPhone ?? null;
+			})
+			.catch(() => {
+				// profile stays on the email fallback
+			});
+	});
+
 	async function signOut(): Promise<void> {
 		await session.logout();
 		showToast('Вы вышли из кабинета');
@@ -69,14 +90,14 @@
 		<div class="account__head">
 			<div>
 				<Eyebrow>Личный кабинет</Eyebrow>
-				<h1 class="account__title">{session.user.name.split(' ')[0]}, рады вас видеть</h1>
+				<h1 class="account__title">{(profileName ?? displayName).split(/[\s@]/)[0]}, рады вас видеть</h1>
 				<p class="account__lead">Ваши устройства, история обращений и всё, что нужно знать о текущем ремонте.</p>
 			</div>
 			<div class="profile">
-				<span class="profile__avatar" aria-hidden="true">{initials(session.user.name)}</span>
+				<span class="profile__avatar" aria-hidden="true">{initials(displayName)}</span>
 				<div class="profile__info">
-					<p class="profile__name">{session.user.name}</p>
-					<p class="profile__contact">{session.user.phone ?? session.user.email ?? ''}</p>
+					<p class="profile__name">{profileName ?? displayName}</p>
+					<p class="profile__contact">{contactText}</p>
 				</div>
 				<button class="profile__signout" type="button" onclick={signOut}>Выйти ↗</button>
 			</div>

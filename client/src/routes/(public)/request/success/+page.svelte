@@ -9,11 +9,6 @@
 
 	// The identifier stays internal: the client sees the recap, not the order id.
 	const orderId = $derived(page.url.searchParams.get('id') ?? '');
-	const device = $derived(page.url.searchParams.get('device') ?? '');
-	const services = $derived(page.url.searchParams.get('services') ?? '');
-	const price = $derived(page.url.searchParams.get('price') ?? '—');
-	const date = $derived(page.url.searchParams.get('date') ?? '');
-	const time = $derived(page.url.searchParams.get('time') ?? '');
 
 	let order = $state<RepairOrderDto | null>(null);
 	let notFound = $state(false);
@@ -28,15 +23,27 @@
 			.catch(() => (notFound = true));
 	});
 
+	// Recap prefers the API data; the query params from the form are the fallback.
+	const device = $derived(order?.deviceName || page.url.searchParams.get('device') || '');
+	const services = $derived(order?.serviceName || page.url.searchParams.get('services') || '');
+	const price = $derived(
+		order && order.price !== null && order.price !== undefined
+			? order.price === 0 ? '0' : String(order.price)
+			: page.url.searchParams.get('price') ?? '—'
+	);
+	const date = $derived(order?.preferredVisitAt ?? page.url.searchParams.get('date') ?? '');
+	const time = $derived(page.url.searchParams.get('time') ?? '');
+
 	const dateFormatted = $derived(
 		date
-			? new Date(`${date}T12:00:00Z`).toLocaleDateString('ru-RU', {
+			? new Date(date.length === 10 ? `${date}T12:00:00Z` : date).toLocaleDateString('ru-RU', {
 				day: 'numeric',
 				month: 'long',
 				timeZone: workshop.timeZone
 			})
 			: ''
 	);
+
 </script>
 
 {#if orderId}

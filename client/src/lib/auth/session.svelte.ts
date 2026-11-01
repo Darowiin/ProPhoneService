@@ -1,13 +1,22 @@
 import { browser } from '$app/env';
 import * as auth from '../../services/auth.ts';
-import type { SessionUser } from '../../services/auth.ts';
+import type { AuthSession } from '../../services/auth.ts';
 
-let current = $state<SessionUser | null>(null);
+let current = $state<AuthSession | null>(null);
 let restored = $state(false);
 
-const STORAGE_KEY = 'pps-user';
+const STORAGE_KEY = 'pps-auth';
 
-function persist(user: SessionUser | null): void {
+export function isTokenExpired(session: AuthSession | null): boolean {
+	if (!session) return true;
+	return Date.parse(session.accessTokenExpiresAtUtc) <= Date.now() + 30_000;
+}
+
+export function bearerToken(): string | null {
+	return current && !isTokenExpired(current) ? current.accessToken : null;
+}
+
+function persist(user: AuthSession | null): void {
 	if (!browser) return;
 	if (user) localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
 	else localStorage.removeItem(STORAGE_KEY);
@@ -16,51 +25,57 @@ function persist(user: SessionUser | null): void {
 async function restoreOnce(): Promise<void> {
 	if (restored) return;
 	restored = true;
-	// Mock/localStorage first: keeps the session across reloads without a backend.
-	if (browser) {
-		const raw = localStorage.getItem(STORAGE_KEY);
-		if (raw) {
-			try {
-				current = JSON.parse(raw) as SessionUser;
-			} catch {
-				localStorage.removeItem(STORAGE_KEY);
-			}
+	const raw = browser ? localStorage.getItem(STORAGE_KEY) : null;
+	if (raw) {
+		try {
+			current = JSON.parse(raw) as AuthSession;
+		} catch {
+			localStorage.removeItem(STORAGE_KEY);
 		}
 	}
-	if (current) return;
-	try {
-		current = await auth.me();
-		persist(current);
-	} catch {
-		// Backend unreachable — stay signed out.
+	if (!current) return;
+	// The access token lives ~15 minutes; a stored session is useless without
+	// a valid refresh cookie, so exchange it right away on every cold start.
+	const refreshed = await auth.refresh();
+	if (refreshed) current = refreshed;
+	else {
+		current = null;
+		persist(null);
 	}
 }
 
 export const session = {
 	/** Signed-in user, or null. Reactive. */
-	get user(): SessionUser | null {
+	get user(): AuthSession | null {
 		return current;
 	},
 	/** True after the initial restore attempt (guards wait for it). */
 	get ready(): boolean {
 		return restored;
 	},
-	login(identity: string, password: string): Promise<SessionUser> {
-		return auth.login(identity, password).then((user) => {
-			current = user;
-			persist(user);
-			return user;
-		});
+	get role(): AuthSession['role'] | null {
+		return current?.role ?? null;
 	},
-	register(name: string, identity: string, password: string): Promise<SessionUser> {
-		return auth.register(name, identity, password).then((user) => {
-			current = user;
-			persist(user);
-			return user;
-		});
+	start(email: string, authSession: AuthSession): void {
+		auth.rememberEmail(email);
+		current = authSession;
+		persist(authSession);
+	},
+	/** Requests a one-time code to the given email. */
+	requestCode(email: string): Promise<void> {
+		auth.rememberEmail(email);
+		return auth.requestCode(email);
+	},
+	/** Exchanges the code for tokens and signs the user in. */
+	async confirm(email: string, code: string): Promise<AuthSession> {
+		const authSession = await auth.confirm(email, code);
+		current = authSession;
+		persist(authSession);
+		return authSession;
 	},
 	async logout(): Promise<void> {
-		await auth.logout();
+		// No dedicated logout endpoint in card 1: dropping the cookie happens
+		// client-side (refresh will fail -> 401).
 		current = null;
 		persist(null);
 	}
@@ -71,7 +86,7 @@ export function initSession(): void {
 	if (!restored) void restoreOnce();
 }
 
-/** Clears the local session (e.g. on 401 from a protected API). */
+/** Clears the local session (e.g. on a failed refresh after 401). */
 export function dropSession(): void {
 	current = null;
 	persist(null);

@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
+	import { session } from '#lib/auth/session.svelte.ts';
 	import { showToast } from '#lib/components/toast.svelte.ts';
 	import {
 		devices,
@@ -27,6 +28,8 @@
 	let customDevice = $state('');
 	let selectedServiceIds = $state<string[]>([]);
 	let contact = $state('');
+	let problemDescription = $state('');
+	let confirmationEmail = $state('');
 	let visitDate = $state('');
 	let visitTime = $state('');
 	let services = $state<ServiceDto[]>([]);
@@ -71,6 +74,7 @@
 	const phoneValid = $derived(
 		/^\+7\d{10}$/.test(`+7${phoneDigits.slice(1)}`) && phoneDigits.length === 11
 	);
+
 	const contactValid = $derived(contactIsEmail ? emailValid : phoneValid);
 
 	const visitTimes = $derived(
@@ -109,6 +113,22 @@
 
 		return null;
 	})());
+
+	// TEMP DIAGNOSTIC: expose form state via DOM (remove after debugging)
+	$effect(() => {
+		const el = document.documentElement;
+		el.dataset.fv = String(formValid);
+		el.dataset.fv_name = clientName.trim().length > 0 ? '1' : '0';
+		el.dataset.fv_dev = deviceName.length > 0 ? '1' : '0';
+		el.dataset.fv_devM = deviceManufacturer.length > 0 ? '1' : '0';
+		el.dataset.fv_touchedContact = String(touched.contact ?? false);
+		el.dataset.fv_contact = contactValue === '' ? 'empty' : contactIsEmail ? 'email' : 'phone';
+		el.dataset.fv_contactValid = String(contactValid);
+		el.dataset.fv_confirmEmail = confirmationEmail;
+		el.dataset.fv_visit = visitDate !== '' ? visitDate : 'empty';
+		el.dataset.fv_visitError = visitError ?? 'none';
+		el.dataset.fv_services = String(selectedServiceIds.length);
+	});
 
 	const formValid = $derived(
 		clientName.trim().length > 0 &&
@@ -207,16 +227,20 @@
 
 		submitting = true;
 		let result: CreateOrderResult;
+		// Card 3: a guest order requires an email — it goes through the code
+		// confirmation; the phone is kept for contact only.
+		const guestEmail = contactIsEmail ? contactValue : confirmationEmail.trim();
 		try {
 			const payload: CreateOrderPayload = {
 				name: clientName.trim(),
 				phone: contactIsEmail ? null : `+7${phoneDigits.slice(1)}`,
-				email: contactIsEmail ? contactValue : null,
+				email: guestEmail,
 				deviceType: 'Phone',
 				deviceManufacturer,
 				deviceModel,
 				preferredVisitAt: workshopWallTimeToUtcIso(visitDate, visitTime),
-				serviceIds: selectedServiceIds
+				serviceIds: selectedServiceIds,
+				problemDescription: problemDescription.trim() || null
 			};
 			result = await createOrder(payload);
 		} catch (error) {
@@ -248,6 +272,14 @@
 			}
 			submitting = false;
 
+			return;
+		}
+
+		// Card 3: a guest order lands in PendingContact and activates after the
+		// email code confirm — route to the confirmation step first.
+		if (result.requiresEmailConfirmation && !session.user) {
+			const param = new URLSearchParams({ id: result.id, email: guestEmail });
+			await goto(`/request/confirm?${param}`);
 			return;
 		}
 
@@ -403,6 +435,35 @@
 				{/if}
 			</div>
 
+			{#if !contactIsEmail}
+				<div class="field">
+					<label class="label" for="confirmEmail">Почта для подтверждения заявки</label>
+					<input
+						id="confirmEmail"
+						class="input"
+						class:input--error={touched.confirmEmail && !confirmationEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/)}
+						type="email"
+						placeholder="mail@example.com"
+						bind:value={confirmationEmail}
+						onblur={() => markTouched('confirmEmail')}
+					/>
+					<span class="hint">Отправим сюда одноразовый код — без него заявка не активируется.</span>
+				</div>
+			{/if}
+
+			<div class="field">
+				<label class="label" for="description">Описание проблемы</label>
+				<textarea
+					id="description"
+					class="input input--area"
+					rows="3"
+					placeholder="Телеграфным стилем: что случилось, состояние устройства"
+					maxlength="2000"
+					bind:value={problemDescription}
+				></textarea>
+				<span class="hint">Необязательно — максимум 2000 символов.</span>
+			</div>
+
 			<Button type="submit" size="lg" disabled={!formValid || submitting}>
 				{submitting ? 'Отправляем…' : 'Отправить заявку'}
 			</Button>
@@ -544,7 +605,12 @@
 		outline: none;
 	}
 
-	.input--error {
+.input--area {
+		font-family: inherit;
+		resize: vertical;
+	}
+
+		.input--error {
 		border-color: var(--danger);
 	}
 

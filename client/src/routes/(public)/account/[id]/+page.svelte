@@ -13,6 +13,9 @@
 
 	const orderId = $derived(pageUrlId());
 
+	/** Review author: the client behind the order, falling back to the email. */
+	let currentUser = $state<{ name: string }>({ name: 'Клиент' });
+
 	let order = $state<AccountOrderDto | null>(null);
 	let notFound = $state(false);
 
@@ -39,7 +42,10 @@
 			return;
 		}
 		fetchMyOrderById(orderId)
-			.then((result) => (order = result))
+			.then((result) => {
+				order = result;
+				currentUser = { name: result.clientName ?? session.user?.email ?? 'Клиент' };
+			})
 			.catch(() => (notFound = true));
 	});
 
@@ -56,7 +62,7 @@
 		}
 		busy = true;
 		try {
-			await createReview(order.id, rating, text.trim(), session.user?.name ?? 'Клиент');
+			await createReview(order.id, rating, text.trim(), currentUser.name);
 			alreadyReviewed = true;
 			showToast('Спасибо! Отзыв опубликован');
 		} catch (error) {
