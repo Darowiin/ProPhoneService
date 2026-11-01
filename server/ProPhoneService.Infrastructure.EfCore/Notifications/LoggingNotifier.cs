@@ -4,14 +4,18 @@ using ProPhoneService.Application.Contracts;
 namespace ProPhoneService.Infrastructure.EfCore.Notifications;
 
 /// <summary>
-/// Демо-реализация отправки сообщений: пишет в лог (реальные провайдеры - Карточка 5)
+/// Демо-реализация отправки сообщений: пишет в лог; используется, когда email-провайдер не настроен
 /// </summary>
 public class LoggingNotifier(ILogger<LoggingNotifier> logger) : INotifier
 {
     /// <inheritdoc />
-    public Task SendAsync(string target, string text, CancellationToken cancellationToken = default)
+    public Task SendAsync(
+        string target,
+        string subject,
+        string text,
+        CancellationToken cancellationToken = default)
     {
-        logger.LogInformation("Отправка сообщения: {Target} -> {Text}", target, text);
+        logger.LogInformation("Отправка сообщения: {Target} [{Subject}] -> {Text}", target, subject, text);
         return Task.CompletedTask;
     }
 }

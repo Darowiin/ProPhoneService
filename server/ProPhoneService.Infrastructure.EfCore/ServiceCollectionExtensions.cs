@@ -39,17 +39,26 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRepository, ServiceRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IAuthCodeRepository, AuthCodeRepository>();
-        services.AddScoped<INotifier, LoggingNotifier>();
 
         return services;
     }
 
     /// <summary>
-    /// Регистрация отправителя сообщений (демо-заглушка; провайдеры - Карточка 5)
+    /// Регистрация отправителя сообщений: SMTP-провайдер (Resend) или лог-заглушка
     /// </summary>
-    public static IServiceCollection AddNotifier(this IServiceCollection services)
+    /// <param name="services">Коллекция сервисов</param>
+    /// <param name="useEmailProvider"><c>true</c> - письма через SMTP, <c>false</c> - запись в лог (демо)</param>
+    public static IServiceCollection AddNotifier(this IServiceCollection services, bool useEmailProvider)
     {
-        services.AddScoped<INotifier, LoggingNotifier>();
+        if (useEmailProvider)
+        {
+            services.AddScoped<INotifier, SmtpEmailNotifier>();
+        }
+        else
+        {
+            services.AddScoped<INotifier, LoggingNotifier>();
+        }
+
         return services;
     }
 }

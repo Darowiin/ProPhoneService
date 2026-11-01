@@ -79,7 +79,11 @@ public class AuthService(
         }
 
         await authCodeRepository.SaveChangesAsync(cancellationToken);
-        await notifier.SendAsync(normalized, $"Код подтверждения: {code}. Действителен {authOptions.CodeLifetimeMinutes} мин", cancellationToken);
+        await notifier.SendAsync(
+            normalized,
+            "Код подтверждения ProPhoneService",
+            $"Код подтверждения: {code}. Действителен {authOptions.CodeLifetimeMinutes} мин",
+            cancellationToken);
 
         return AuthOutcome.SuccessNoContent();
     }

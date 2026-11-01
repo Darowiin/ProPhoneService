@@ -27,7 +27,15 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 
 builder.Services.AddApplicationServices();
 
-builder.Services.AddNotifier();
+// Email-провайдер: вне Development обязателен, в Development без настроек - лог-заглушка
+var emailOptions = builder.Configuration.GetSection("Email").Get<EmailOptions>() ?? new EmailOptions();
+if (!emailOptions.IsConfigured && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException(
+        "Email: не заданы SMTP-настройки провайдера; задайте Email__Password и Email__FromAddress в окружении");
+}
+builder.Services.AddSingleton(emailOptions);
+builder.Services.AddNotifier(emailOptions.IsConfigured);
 
 builder.Services.AddOptions<WorkshopOptions>()
     .Bind(builder.Configuration.GetSection("Workshop"))

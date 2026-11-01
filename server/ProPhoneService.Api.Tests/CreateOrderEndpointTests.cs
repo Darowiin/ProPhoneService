@@ -47,7 +47,7 @@ public class CreateOrderEndpointTests
         /// </summary>
         public Dictionary<string, AuthCode> AuthCodes { get; } = [];
 
-        public List<(string Target, string Text)> Notifications { get; } = [];
+        public List<(string Target, string Subject, string Text)> Notifications { get; } = [];
 
         public WebApplicationFactory<Program> CreateFactory()
         {
@@ -92,8 +92,13 @@ public class CreateOrderEndpointTests
 
                     var notifier = new Mock<INotifier>();
                     notifier
-                        .Setup(n => n.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                        .Callback((string target, string text, CancellationToken _) => Notifications.Add((target, text)))
+                        .Setup(n => n.SendAsync(
+                            It.IsAny<string>(),
+                            It.IsAny<string>(),
+                            It.IsAny<string>(),
+                            It.IsAny<CancellationToken>()))
+                        .Callback((string target, string subject, string text, CancellationToken _) =>
+                            Notifications.Add((target, subject, text)))
                         .Returns(Task.CompletedTask);
 
                     services.RemoveAll<IRepository<Device>>();
@@ -172,8 +177,9 @@ public class CreateOrderEndpointTests
         Assert.Equal("+79001234567", harness.CreatedOrder.ContactPhone);
 
         // Код ушёл на email заявки и совпадает с сохранённым
-        var (target, text) = Assert.Single(harness.Notifications);
+        var (target, subject, text) = Assert.Single(harness.Notifications);
         Assert.Equal("ivan@example.com", target);
+        Assert.Equal("Код подтверждения ProPhoneService", subject);
         var match = Regex.Match(text, @"\b\d{6}\b");
         Assert.True(match.Success);
         Assert.Equal(match.Value, harness.AuthCodes["ivan@example.com"].Code);

@@ -38,6 +38,8 @@ API применяет миграции при старте в режиме ра
 
 `MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
 
+`RESEND_API_KEY` (env `Email__Password`) + `EMAIL_FROM` (env `Email__FromAddress`) - отправка писем через Resend SMTP; вне Development эти настройки обязательны, в Development без них коды пишутся в лог
+
 ### Backend без Docker
 
 ```bash
@@ -128,6 +130,15 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 | POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
 | POST | `/api/auth/confirm` | публично | подтверждение кода: аккаунт + клиент, JWT + refresh в HttpOnly cookie |
 | POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
+
+## Уведомления (email)
+
+Отправка сообщений идёт через `INotifier`; реализация выбирается по настройкам секции `Email`:
+
+- **Resend SMTP** (`SmtpEmailNotifier`, MailKit) - когда заданы `Email__Password` (API-ключ) и `Email__FromAddress`; хост/порт/пользователь по умолчанию `smtp.resend.com` / `465` / `resend` (465 - неявный TLS, 587/2465/2587 - STARTTLS)
+- **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
+
+Отправителя (`Email__FromAddress`) нужно подтвердить в Resend; для тестов подходит `onboarding@resend.dev` (письма только на адрес владельца ключа). `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
 
 ## Статистика
 

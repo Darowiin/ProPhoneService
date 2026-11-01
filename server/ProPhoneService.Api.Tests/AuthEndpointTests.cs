@@ -49,7 +49,7 @@ public class AuthEndpointTests
         // Словарь имитирует хранение по email (один активный код на адрес)
         public Dictionary<string, AuthCode> AuthCodes { get; set; } = [];
 
-        public List<(string Target, string Text)> Notifications { get; } = [];
+        public List<(string Target, string Subject, string Text)> Notifications { get; } = [];
 
         public List<RepairOrder> PendingOrders { get; } = [];
 
@@ -132,8 +132,13 @@ public class AuthEndpointTests
 
                     var notifier = new Mock<INotifier>();
                     notifier
-                        .Setup(n => n.SendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
-                        .Callback((string target, string text, CancellationToken _) => Notifications.Add((target, text)))
+                        .Setup(n => n.SendAsync(
+                            It.IsAny<string>(),
+                            It.IsAny<string>(),
+                            It.IsAny<string>(),
+                            It.IsAny<CancellationToken>()))
+                        .Callback((string target, string subject, string text, CancellationToken _) =>
+                            Notifications.Add((target, subject, text)))
                         .Returns(Task.CompletedTask);
 
                     services.RemoveAll<IAuthCodeRepository>();
