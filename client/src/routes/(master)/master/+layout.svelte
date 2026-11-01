@@ -3,7 +3,23 @@
 	import { showToast } from '#lib/components/toast.svelte.ts';
 	import { theme } from '#lib/theme/theme.svelte.ts';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
+	import { session } from '#lib/auth/session.svelte.ts';
 	import { masterProfile, workshop } from '../../../mocks/db.ts';
+
+	// Sprint-2 card 2: master endpoints answer 403 for clients and 401 for
+	// guests — guard before the first request fires.
+	$effect(() => {
+		if (!session.ready) return;
+		if (!session.user) {
+			goto(`/login?next=${encodeURIComponent(page.url.pathname)}`);
+			return;
+		}
+		if (session.role !== 'Master') {
+			showToast('Раздел доступен только мастеру. Войдите под аккаунтом мастера.');
+			goto('/');
+		}
+	});
 
 	let { children } = $props();
 
