@@ -40,6 +40,11 @@ public class ProPhoneServiceDbContext(DbContextOptions<ProPhoneServiceDbContext>
     public DbSet<Review> Reviews => Set<Review>();
 
     /// <summary>
+    /// Лог отправки уведомлений
+    /// </summary>
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+
+    /// <summary>
     /// Связи заказ — услуга
     /// </summary>
     public DbSet<RepairOrderService> RepairOrderServices => Set<RepairOrderService>();

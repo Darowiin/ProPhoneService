@@ -156,6 +156,53 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.ToTable("device");
                 });
 
+            modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Recipient")
+                        .HasColumnType("text")
+                        .HasColumnName("recipient");
+
+                    b.Property<Guid>("RepairOrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("repair_order_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("RepairOrderId");
+
+                    b.ToTable("notification_log");
+                });
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.RepairOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -444,6 +491,17 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.RepairOrder", "RepairOrder")
+                        .WithMany()
+                        .HasForeignKey("RepairOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RepairOrder");
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.RepairOrder", b =>

@@ -35,6 +35,12 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Получить заказ для смены статуса: загружается с клиентом (нужен email для уведомления)
+    /// </summary>
+    /// <returns>Заказ с загруженным клиентом или <c>null</c>, если не найден</returns>
+    Task<RepairOrder?> GetForStatusChangeAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Количество завершённых ремонтов по типам устройств за период (по моменту перехода в Completed)
     /// </summary>
     /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>

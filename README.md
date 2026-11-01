@@ -82,6 +82,7 @@ npm run lint
 | `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
 | `account`              | аккаунт входа (FK client_id 1:1; role - Client/Master, created_at) |
 | `auth_code`            | одноразовые коды входа на email (code, expires_at, failed_attempts, locked_until) |
+| `notification_log`     | лог уведомлений (FK repair_order_id; recipient, subject, message, status, attempts, created_at) |
 | `review`               | отзывы клиентов (FK client_id; rating, text, created_at) |
 
 ## Архитектура server
@@ -139,6 +140,8 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 - **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
 
 Отправителя (`Email__FromAddress`) нужно подтвердить в Resend; для тестов подходит `onboarding@resend.dev` (письма только на адрес владельца ключа). `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
+
+Смена статуса заказа отправляет клиенту письмо (после успешного сохранения): получатель - `contact_email` заявки или email клиента. Сбой провайдера PATCH не ломает - 3 попытки с backoff (`Notifications:MaxAttempts`, `Notifications:RetryDelay`, базовая пауза удваивается), результат пишется в `notification_log` (кому, когда, по какому заказу, `Sent`/`Failed`, число попыток)
 
 ## Статистика
 

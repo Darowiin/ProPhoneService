@@ -1,4 +1,5 @@
 using MapsterMapper;
+using Microsoft.Extensions.Logging;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Exceptions;
 using ProPhoneService.Domain.Repositories;
@@ -11,7 +12,9 @@ namespace ProPhoneService.Application.Services;
 /// </summary>
 public class OrderWorkflowService(
     IRepairOrderRepository orderRepository,
-    IMapper mapper)
+    StatusNotificationService statusNotifications,
+    IMapper mapper,
+    ILogger<OrderWorkflowService> logger)
 {
     /// <summary>
     /// Получить страницу заказов с фильтрами по статусу и диапазону желаемой даты визита (новые сверху)
@@ -108,7 +111,7 @@ public class OrderWorkflowService(
         string? comment,
         CancellationToken cancellationToken = default)
     {
-        var order = await orderRepository.GetByIdAsync(id, cancellationToken);
+        var order = await orderRepository.GetForStatusChangeAsync(id, cancellationToken);
         if (order is null)
         {
             return ChangeStatusResult.NotFound;
@@ -131,6 +134,16 @@ public class OrderWorkflowService(
         {
             // Токен конкурентности (xmin) поймал параллельную модификацию заказа
             return ChangeStatusResult.Conflict;
+        }
+
+        // Сбой провайдера уведомлений не должен ломать смену статуса: ошибки только логируются
+        try
+        {
+            await statusNotifications.NotifyStatusChangedAsync(order, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(exception, "Заказ {OrderId}: уведомление о смене статуса не отправлено", order.Id);
         }
 
         return ChangeStatusResult.Success;
