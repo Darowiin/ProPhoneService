@@ -384,7 +384,10 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 	// Access token lives ~15 minutes: on 401 exchange the refresh cookie once
 	// and replay the request; a second 401 propagates to the caller.
-	if (response.status === 401 && !init?.headers) {
+	// Auth endpoints must never trigger the refresh themselves — that would
+	// recurse into /auth/refresh and hang on its own pending promise.
+	const isAuthEndpoint = path.startsWith('/auth/');
+	if (response.status === 401 && !isAuthEndpoint) {
 		const refreshed = await authRefresh();
 		if (refreshed) response = await send();
 	}
