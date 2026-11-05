@@ -77,11 +77,8 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
         DateTime? toUtc,
         CancellationToken cancellationToken = default)
     {
-        var rows = await Context.RepairStatusHistories
-            .Where(h => h.Status == RepairStatus.Completed)
-            .Where(h => fromUtc == null || h.ChangedAt >= fromUtc)
-            .Where(h => toUtc == null || h.ChangedAt <= toUtc)
-            .Select(h => h.RepairOrder!.Device!.Type)
+        var rows = await CompletedOrders(fromUtc, toUtc)
+            .Select(order => order.Device!.Type)
             .GroupBy(type => type)
             .Select(group => new { Type = group.Key, Count = group.Count() })
             .ToListAsync(cancellationToken);
@@ -95,12 +92,17 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
         DateTime? toUtc,
         CancellationToken cancellationToken = default)
     {
-        return Context.RepairStatusHistories
-            .Where(h => h.Status == RepairStatus.Completed)
-            .Where(h => fromUtc == null || h.ChangedAt >= fromUtc)
-            .Where(h => toUtc == null || h.ChangedAt <= toUtc)
-            .Select(h => h.RepairOrder!.TotalPrice)
+        return CompletedOrders(fromUtc, toUtc)
+            .Select(order => order.TotalPrice)
             .SumAsync(cancellationToken);
+    }
+
+    private IQueryable<RepairOrder> CompletedOrders(DateTime? fromUtc, DateTime? toUtc)
+    {
+        return Set.Where(order => order.Status == RepairStatus.Completed)
+            .Where(order => order.StatusHistory.Any(history => history.Status == RepairStatus.Completed
+                && (fromUtc == null || history.ChangedAt >= fromUtc)
+                && (toUtc == null || history.ChangedAt <= toUtc)));
     }
 
     /// <inheritdoc />

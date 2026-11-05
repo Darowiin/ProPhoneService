@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using ProPhoneService.Application.Contracts;
+using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared;
@@ -65,6 +66,9 @@ public class AuthEndpointTests
                 host.ConfigureTestServices(services =>
                 {
                     var authCodeRepository = new Mock<IAuthCodeRepository>();
+                    authCodeRepository
+                        .Setup(r => r.ExecuteForEmailAsync(It.IsAny<string>(), It.IsAny<Func<Task<AuthOutcome>>>(), It.IsAny<CancellationToken>()))
+                        .Returns((string _, Func<Task<AuthOutcome>> operation, CancellationToken _) => operation());
                     authCodeRepository
                         .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                         .ReturnsAsync((string email, CancellationToken _) => AuthCodes.GetValueOrDefault(email));
@@ -242,10 +246,11 @@ public class AuthEndpointTests
         var store = new AuthStore();
         using var client = store.CreateFactory().CreateClient();
         await RequestCode(client, Email);
+        var wrongCode = store.AuthCodes[Email].Code == "000000" ? "000001" : "000000";
 
         for (var attempt = 1; attempt <= 5; attempt++)
         {
-            var response = await Confirm(client, Email, "000000");
+            var response = await Confirm(client, Email, wrongCode);
 
             if (attempt < 5)
             {
@@ -377,6 +382,7 @@ public class AuthEndpointTests
             "+79001234567",
             _nowUtc.UtcDateTime.AddDays(1),
             "Не заряжается");
+        pending.ContactName = "Иван";
         store.PendingOrders.Add(pending);
         using var client = store.CreateFactory().CreateClient();
         await RequestCode(client, Email);
@@ -385,6 +391,8 @@ public class AuthEndpointTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var auth = await response.Content.ReadFromJsonAsync<AuthResponse>(_jsonOptions);
+        Assert.Equal("Иван", Assert.Single(store.AddedClients).Name);
+        Assert.Equal("+79001234567", store.AddedClients[0].Phone);
         Assert.Equal(auth!.ClientId, pending.ClientId);
         Assert.Equal(RepairStatus.Created, pending.Status);
         Assert.Contains(pending.StatusHistory, h => h.Status == RepairStatus.Created);

@@ -37,6 +37,12 @@ public class AuthService(
             return AuthOutcome.Failure(400, "Некорректный email", "Укажите корректный адрес электронной почты");
         }
 
+        return await authCodeRepository.ExecuteForEmailAsync(normalized,
+            () => RequestCodeCoreAsync(normalized, cancellationToken), cancellationToken);
+    }
+
+    private async Task<AuthOutcome> RequestCodeCoreAsync(string normalized, CancellationToken cancellationToken)
+    {
         var authCode = await authCodeRepository.GetByEmailAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
 
@@ -107,6 +113,12 @@ public class AuthService(
             return AuthOutcome.Failure(400, "Код не введён", "Введите код из сообщения");
         }
 
+        return await authCodeRepository.ExecuteForEmailAsync(normalized,
+            () => ConfirmCoreAsync(normalized, code, cancellationToken), cancellationToken);
+    }
+
+    private async Task<AuthOutcome> ConfirmCoreAsync(string normalized, string code, CancellationToken cancellationToken)
+    {
         var authCode = await authCodeRepository.GetByEmailAsync(normalized, cancellationToken);
         var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
 
@@ -166,8 +178,8 @@ public class AuthService(
         client ??= new Client
         {
             Id = Guid.NewGuid(),
-            // Имя неизвестно на входе - до правки в ЛК отображается email
-            Name = normalized,
+            Name = pendingOrders.FirstOrDefault()?.ContactName ?? normalized,
+            Phone = pendingOrders.FirstOrDefault()?.ContactPhone,
             Email = normalized,
         };
 

@@ -96,6 +96,22 @@ public class ChangeStatusEndpointTests
         }
     }
 
+    [Fact]
+    public async Task ChangeStatus_PendingOrder_Returns404WithoutChanges()
+    {
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var store = new OrderStore { Order = pending };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.PatchAsJsonAsync($"/api/orders/{pending.Id}/status", new { status = "Created" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(RepairStatus.PendingContact, pending.Status);
+        Assert.Equal(0, store.SavedCount);
+        Assert.Equal(0, store.NotificationCalls);
+    }
+
     private static RepairOrder NewOrder() =>
         RepairOrder.Create(Guid.NewGuid(), Guid.NewGuid(), preferredVisitAt: null);
 

@@ -50,7 +50,14 @@ if (string.IsNullOrWhiteSpace(jwtKey) && !builder.Environment.IsDevelopment())
 {
     throw new InvalidOperationException("Jwt:Key не задана; задайте Jwt__Key в окружении");
 }
-jwtKey ??= "dev-only-signing-key-not-for-production";
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    jwtKey = "dev-only-signing-key-not-for-production";
+}
+if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException("Jwt:Key должна содержать не менее 32 байт UTF-8 для HS256");
+}
 
 builder.Services.AddOptions<AuthOptions>()
     .Bind(builder.Configuration.GetSection("Auth"))

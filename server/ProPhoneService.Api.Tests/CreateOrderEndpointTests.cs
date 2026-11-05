@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using ProPhoneService.Application.Contracts;
+using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared.Enum;
@@ -37,6 +38,8 @@ public class CreateOrderEndpointTests
     private class CreateOrderHarness
     {
         public Service[] Services { get; init; } = [];
+
+        public bool FailNotification { get; init; }
 
         public RepairOrder? CreatedOrder { get; private set; }
 
@@ -80,6 +83,9 @@ public class CreateOrderEndpointTests
 
                     var authCodeRepo = new Mock<IAuthCodeRepository>();
                     authCodeRepo
+                        .Setup(r => r.ExecuteForEmailAsync(It.IsAny<string>(), It.IsAny<Func<Task<AuthOutcome>>>(), It.IsAny<CancellationToken>()))
+                        .Returns((string _, Func<Task<AuthOutcome>> operation, CancellationToken _) => operation());
+                    authCodeRepo
                         .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                         .ReturnsAsync((string email, CancellationToken _) => AuthCodes.GetValueOrDefault(email));
                     authCodeRepo
@@ -98,7 +104,10 @@ public class CreateOrderEndpointTests
                             It.IsAny<string>(),
                             It.IsAny<CancellationToken>()))
                         .Callback((string target, string subject, string text, CancellationToken _) =>
-                            Notifications.Add((target, subject, text)))
+                        {
+                            if (FailNotification) throw new IOException("SMTP unavailable");
+                            Notifications.Add((target, subject, text));
+                        })
                         .Returns(Task.CompletedTask);
 
                     services.RemoveAll<IRepository<Device>>();
@@ -173,6 +182,7 @@ public class CreateOrderEndpointTests
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(RepairStatus.PendingContact, harness.CreatedOrder.Status);
         Assert.Null(harness.CreatedOrder.ClientId);
+        Assert.Equal("Иван", harness.CreatedOrder.ContactName);
         Assert.Equal("ivan@example.com", harness.CreatedOrder.ContactEmail);
         Assert.Equal("+79001234567", harness.CreatedOrder.ContactPhone);
 
@@ -183,6 +193,20 @@ public class CreateOrderEndpointTests
         var match = Regex.Match(text, @"\b\d{6}\b");
         Assert.True(match.Success);
         Assert.Equal(match.Value, harness.AuthCodes["ivan@example.com"].Code);
+    }
+
+    [Fact]
+    public async Task Create_SmtpUnavailable_ReturnsCreatedWithPendingOrder()
+    {
+        var harness = new CreateOrderHarness { FailNotification = true };
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([]));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(RepairStatus.PendingContact, harness.CreatedOrder!.Status);
+        Assert.Null(harness.CreatedOrder.ClientId);
     }
 
     [Fact]

@@ -112,7 +112,7 @@ public class OrderWorkflowService(
         CancellationToken cancellationToken = default)
     {
         var order = await orderRepository.GetForStatusChangeAsync(id, cancellationToken);
-        if (order is null)
+        if (order is null || order.Status == RepairStatus.PendingContact)
         {
             return ChangeStatusResult.NotFound;
         }

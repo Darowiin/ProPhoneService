@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
@@ -19,7 +20,8 @@ public class OrderCreationService(
     IRepairOrderRepository orderRepository,
     AuthService authService,
     TimeProvider timeProvider,
-    IOptions<WorkshopOptions> workshopOptions)
+    IOptions<WorkshopOptions> workshopOptions,
+    ILogger<OrderCreationService> logger)
 {
     /// <summary>
     /// Создать заявку на ремонт
@@ -110,7 +112,7 @@ public class OrderCreationService(
                 preferredVisitAtUtc,
                 problemDescription);
 
-        // Контакты из формы сохраняем и у авторизованной заявки (для связи)
+        order.ContactName = request.Name.Trim();
         order.ContactEmail ??= contactEmail;
         order.ContactPhone ??= request.Phone;
         order.TotalPrice = totalPrice;
@@ -133,7 +135,15 @@ public class OrderCreationService(
         {
             // Код подтверждения уходит на email заявки через INotifier;
             // повторный код в пределах кулдауна не отправляется, но уже отправленный действует
-            await authService.RequestCodeAsync(contactEmail, cancellationToken);
+            try
+            {
+                await authService.RequestCodeAsync(contactEmail, cancellationToken);
+            }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Заявка сохранена; код можно повторно запросить через /api/auth/request-code
+                logger.LogWarning(exception, "Заказ {OrderId}: код подтверждения не отправлен", order.Id);
+            }
         }
 
         return CreateOrderResult.Success(order.Id, isGuest);

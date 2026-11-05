@@ -23,6 +23,6 @@ public record ServiceUpsertRequest
     /// <summary>
     /// Стоимость услуги, руб (неотрицательная)
     /// </summary>
-    [Range(0, double.MaxValue, ErrorMessage = "Цена не может быть отрицательной")]
+    [Range(typeof(decimal), "0", "99999999.99", ParseLimitsInInvariantCulture = true, ErrorMessage = "Цена должна быть от 0 до 99999999.99")]
     public decimal Price { get; init; }
 }

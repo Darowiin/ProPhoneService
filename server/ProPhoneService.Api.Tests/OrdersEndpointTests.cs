@@ -224,6 +224,9 @@ public class OrdersEndpointTests
 
         order.TotalPrice = 2700m;
         order.ProblemDescription = "Не заряжается и греется";
+        order.ContactName = "Контакт заявки";
+        order.ContactEmail = "order@example.com";
+        order.ContactPhone = "+79009876543";
         var svcCharging = new Service { Id = Guid.NewGuid(), Name = "Замена разъема зарядки", Price = 1200m, IsActive = true };
         var svcBattery = new Service { Id = Guid.NewGuid(), Name = "Замена аккумулятора", Price = 1500m, IsActive = true };
         order.Services.Add(new RepairOrderService { RepairOrderId = order.Id, ServiceId = svcCharging.Id, Price = 1200m, Service = svcCharging });
@@ -243,6 +246,9 @@ public class OrdersEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var card = await response.Content.ReadFromJsonAsync<RepairOrderDetailDto>(_jsonOptions);
         Assert.NotNull(card);
+        Assert.Equal(order.ContactName, card.ContactName);
+        Assert.Equal(order.ContactEmail, card.ContactEmail);
+        Assert.Equal(order.ContactPhone, card.ContactPhone);
         Assert.Equal(order.Id, card.Id);
         Assert.Equal(RepairStatus.InProgress, card.Status);
         Assert.Equal("iPhone 13", card.Device.Model);

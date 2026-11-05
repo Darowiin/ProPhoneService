@@ -218,6 +218,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("text")
                         .HasColumnName("contact_email");
 
+                    b.Property<string>("ContactName")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_name");
+
                     b.Property<string>("ContactPhone")
                         .HasColumnType("text")
                         .HasColumnName("contact_phone");

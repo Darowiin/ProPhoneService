@@ -10,6 +10,35 @@ namespace ProPhoneService.Api.Tests;
 /// </summary>
 public class ProgramStartupTests
 {
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Startup_DevelopmentWithBlankJwtKey_UsesFallback(string key)
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+        {
+            host.UseSetting(WebHostDefaults.EnvironmentKey, "Development");
+            host.UseSetting("Database:MigrateOnStartup", "false");
+            host.UseSetting("Jwt:Key", key);
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public void Startup_ShortJwtKey_FailsBeforeServingRequests()
+    {
+        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            host.UseSetting("Jwt:Key", new string('x', 31)));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        Assert.Contains("32", exception.Message);
+    }
+
     private const string ConnectionStringEnvKey = "ConnectionStrings__Default";
 
     [Fact]

@@ -8,6 +8,12 @@ namespace ProPhoneService.Domain.Repositories;
 public interface IAuthCodeRepository : IRepository<AuthCode>
 {
     /// <summary>
+    /// Выполнить операцию в транзакции, сериализуя запросы для одного нормализованного email
+    /// </summary>
+    Task<T> ExecuteForEmailAsync<T>(string email, Func<Task<T>> operation,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Найти активную запись кода по email или <c>null</c>, если не запрашивался
     /// </summary>
     Task<AuthCode?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);

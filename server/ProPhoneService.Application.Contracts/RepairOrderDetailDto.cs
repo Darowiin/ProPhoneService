@@ -25,4 +25,20 @@ public record RepairOrderDetailDto(
     string? ProblemDescription,
     DateTime? PreferredVisitAt,
     DateTime CreatedAt,
-    IReadOnlyList<RepairStatusHistoryDto> StatusTimeline);
+    IReadOnlyList<RepairStatusHistoryDto> StatusTimeline)
+{
+    /// <summary>
+    /// Имя из формы заявки
+    /// </summary>
+    public string? ContactName { get; init; }
+
+    /// <summary>
+    /// Email из формы заявки
+    /// </summary>
+    public string? ContactEmail { get; init; }
+
+    /// <summary>
+    /// Телефон из формы заявки
+    /// </summary>
+    public string? ContactPhone { get; init; }
+}

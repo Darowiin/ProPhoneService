@@ -64,6 +64,12 @@ public class RepairOrder : IEntity
     public string? ProblemDescription { get; set; }
 
     /// <summary>
+    /// Имя, указанное в заявке
+    /// </summary>
+    [Column("contact_name")]
+    public string? ContactName { get; set; }
+
+    /// <summary>
     /// Email, с которого оставлена заявка (нужен для подтверждения кодом)
     /// </summary>
     [Column("contact_email")]
