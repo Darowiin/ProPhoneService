@@ -1,4 +1,4 @@
-import { browser } from '$app/env';
+import { browser } from '$app/environment';
 import * as auth from '../../services/auth.ts';
 import { isMockMode } from '../../services/api.ts';
 import type { AuthSession } from '../../services/auth.ts';
