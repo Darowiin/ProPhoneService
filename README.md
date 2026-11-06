@@ -34,6 +34,8 @@ docker compose up --build   # БД на 5432, API на 8080
 
 API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
 
+### Backend без Docker
+
 Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
 
 `MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
@@ -65,7 +67,26 @@ Health-check: `GET /health` → `Healthy`.
 ```bash
 cd client
 npm ci
+npm run dev
+```
+
+Open `http://localhost:5173/`. Without `client/.env`, the frontend uses deterministic mock data.
+
+To connect the backend, copy `client/.env.example` to `client/.env` and run any branch backend on port 8080. Vite proxies `/api` there, so local development does not require CORS.
+
+```bash
+cd client
+copy .env.example .env   # Windows PowerShell; use cp on POSIX
+npm run dev
+```
+
+For production hosting, serve the built static frontend (`npm run build` → `client/build`) and proxy `/api` to the backend on the same origin.
+
+```bash
 npm run lint
+npm run check
+npm run build
+npm run preview
 ```
 
 ## Схема БД

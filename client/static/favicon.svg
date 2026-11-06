@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+	<!-- Логотип «про телефон» с макета Figma (V3): скруглённый синий квадрат,
+	     внутри белый контур смартфона с точкой-кнопкой. -->
+	<rect width="32" height="32" rx="8" fill="#245BFF"/>
+	<rect x="11.2" y="8.8" width="10.6" height="14.4" rx="3" fill="none" stroke="#fff" stroke-width="2.2"/>
+	<circle cx="16.5" cy="20.4" r="1.1" fill="#fff"/>
+</svg>
