@@ -344,6 +344,10 @@ interface BackendOrderDto {
 /** GET /orders/{id} or GET /me/orders/{id} — the list DTO omits these fields. */
 interface BackendOrderDetailDto extends BackendOrderDto {
 	client: { id: string; name: string; phone: string; email: string | null } | null;
+	/** Контакты из формы заявки: клиент ещё не создан, пока заявка не подтверждена. */
+	contactName: string | null;
+	contactEmail: string | null;
+	contactPhone: string | null;
 	services: { serviceId: string; name: string; price: number }[];
 	totalPrice: number;
 	problemDescription: string | null;
@@ -466,7 +470,7 @@ export async function fetchOrders(options: FetchOrdersOptions = {}): Promise<Rep
 		result.map(async (order) => {
 			try {
 				const detail = await request<BackendOrderDetailDto>(`/orders/${order.id}`);
-				order.clientName = detail.client?.name ?? null;
+				order.clientName = detail.client?.name ?? detail.contactName ?? null;
 				order.problem = detail.problemDescription ?? null;
 				order.price = Number(detail.totalPrice);
 				order.priceFrom = false;
@@ -605,7 +609,7 @@ export function asFrontendOrderDetail(order: BackendOrderDetailDto): RepairOrder
 	return {
 		id: order.id,
 		number: order.id,
-		clientName: order.client?.name ?? null,
+		clientName: order.client?.name ?? order.contactName ?? null,
 		deviceName: [order.device.manufacturer, order.device.model].filter(Boolean).join(' '),
 		serviceName: order.services.map((service) => service.name).join(', ') || null,
 		price: Number(order.totalPrice),
@@ -759,7 +763,7 @@ export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
 				const detail = await request<BackendOrderDetailDto>(`/me/orders/${encodeURIComponent(order.id)}`);
 				order.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
 				order.price = Number(detail.totalPrice);
-				order.clientName = detail.client?.name ?? null;
+				order.clientName = detail.client?.name ?? detail.contactName ?? null;
 				order.clientPhone = detail.client?.phone ?? null;
 				order.timeline = detail.statusTimeline.map((history) => ({
 					label: statusLabels[history.status],
@@ -784,7 +788,7 @@ export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {
 	const mapped = mapMeOrder({ id: detail.id, status: detail.status, device: detail.device, createdAt: detail.createdAt, statusTimeline: detail.statusTimeline });
 	mapped.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
 	mapped.price = Number(detail.totalPrice);
-	mapped.clientName = detail.client?.name ?? null;
+	mapped.clientName = detail.client?.name ?? detail.contactName ?? null;
 	mapped.clientPhone = detail.client?.phone ?? null;
 	mapped.timeline = detail.statusTimeline.map((history) => ({
 		label: statusLabels[history.status],
