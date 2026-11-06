@@ -22,6 +22,74 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ProPhoneService.Domain.Model.Account", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("client_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer")
+                        .HasColumnName("role");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId")
+                        .IsUnique();
+
+                    b.ToTable("account");
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.AuthCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("email");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<int>("FailedAttempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("failed_attempts");
+
+                    b.Property<DateTime?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("locked_until");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.ToTable("auth_code");
+                });
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.Client", b =>
                 {
                     b.Property<Guid>("Id")
@@ -88,6 +156,53 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.ToTable("device");
                 });
 
+            modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<string>("Recipient")
+                        .HasColumnType("text")
+                        .HasColumnName("recipient");
+
+                    b.Property<Guid>("RepairOrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("repair_order_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("RepairOrderId");
+
+                    b.ToTable("notification_log");
+                });
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.RepairOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -95,9 +210,21 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<Guid>("ClientId")
+                    b.Property<Guid?>("ClientId")
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
+
+                    b.Property<string>("ContactEmail")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_email");
+
+                    b.Property<string>("ContactName")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_name");
+
+                    b.Property<string>("ContactPhone")
+                        .HasColumnType("text")
+                        .HasColumnName("contact_phone");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -110,6 +237,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.Property<DateTime?>("PreferredVisitAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("preferred_visit_at");
+
+                    b.Property<string>("ProblemDescription")
+                        .HasColumnType("text")
+                        .HasColumnName("problem_description");
 
                     b.Property<string>("Status")
                         .HasColumnType("text")
@@ -128,6 +259,8 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClientId");
+
+                    b.HasIndex("ContactEmail");
 
                     b.HasIndex("DeviceId");
 
@@ -171,6 +304,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("changed_at");
 
+                    b.Property<Guid?>("ChangedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by");
+
                     b.Property<string>("Comment")
                         .HasColumnType("text")
                         .HasColumnName("comment");
@@ -191,41 +328,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasIndex("RepairOrderId");
 
                     b.ToTable("repair_status_history");
-                });
-
-            modelBuilder.Entity("ProPhoneService.Domain.Model.Review", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<Guid>("ClientId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("client_id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<int>("Rating")
-                        .HasColumnType("integer")
-                        .HasColumnName("rating");
-
-                    b.Property<string>("Text")
-                        .HasColumnType("text")
-                        .HasColumnName("text");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ClientId");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.ToTable("review", t =>
-                        {
-                            t.HasCheckConstraint("CK_review_rating_range", "\"rating\" BETWEEN 1 AND 5");
-                        });
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.Service", b =>
@@ -252,6 +354,14 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("decimal(10,2)")
                         .HasColumnName("price");
 
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
                     b.HasKey("Id");
 
                     b.HasIndex("IsActive");
@@ -264,71 +374,103 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e01"),
                             IsActive = true,
                             Name = "Диагностика (выявление неисправности)",
-                            Price = 0m
+                            Price = 0m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e02"),
                             IsActive = true,
                             Name = "Замена дисплейного модуля",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e03"),
                             IsActive = true,
                             Name = "Замена разъема зарядки",
-                            Price = 1200m
+                            Price = 1200m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e04"),
                             IsActive = true,
                             Name = "Замена аккумулятора",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e05"),
                             IsActive = true,
                             Name = "Замена микрофона",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e06"),
                             IsActive = true,
                             Name = "Замена динамика",
-                            Price = 1100m
+                            Price = 1100m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e07"),
                             IsActive = true,
                             Name = "Замена кнопки",
-                            Price = 1200m
+                            Price = 1200m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e08"),
                             IsActive = true,
                             Name = "Замена камеры",
-                            Price = 1500m
+                            Price = 1500m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e09"),
                             IsActive = true,
                             Name = "Профилактика",
-                            Price = 1000m
+                            Price = 1000m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         },
                         new
                         {
                             Id = new Guid("6f0d2a71-3f2e-4b1e-9d1f-0a1b2c3d4e10"),
                             IsActive = true,
                             Name = "Чистка сеток и разъемов",
-                            Price = 700m
+                            Price = 700m,
+                            UpdatedAt = new DateTime(1, 1, 1, 0, 0, 0, 0, DateTimeKind.Unspecified)
                         });
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.Account", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.Client", "Client")
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.RepairOrder", "RepairOrder")
+                        .WithMany()
+                        .HasForeignKey("RepairOrderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("RepairOrder");
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.RepairOrder", b =>
@@ -336,8 +478,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasOne("ProPhoneService.Domain.Model.Client", "Client")
                         .WithMany("RepairOrders")
                         .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.HasOne("ProPhoneService.Domain.Model.Device", "Device")
                         .WithMany("RepairOrders")
@@ -378,17 +519,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .IsRequired();
 
                     b.Navigation("RepairOrder");
-                });
-
-            modelBuilder.Entity("ProPhoneService.Domain.Model.Review", b =>
-                {
-                    b.HasOne("ProPhoneService.Domain.Model.Client", "Client")
-                        .WithMany()
-                        .HasForeignKey("ClientId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Client");
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.Client", b =>

@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ProPhoneService.Domain.Model;
 
 /// <summary>
-/// Клиент мастерской (автор заказов и отзывов)
+/// Клиент мастерской (автор заказов)
 /// </summary>
 [Table("client")]
 public class Client : IEntity

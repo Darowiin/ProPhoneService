@@ -34,6 +34,12 @@ docker compose up --build   # БД на 5432, API на 8080
 
 API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
 
+Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
+
+`MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
+
+Письма через Resend: `RESEND_API_KEY` + `EMAIL_FROM` (`onboarding@resend.dev` на демо, `noreply@<домен>` после покупки домена); SMTP-параметры по умолчанию `smtp.resend.com`/`465`/`resend`, при смене провайдера переопределяются env `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD`. Вне Development эти настройки обязательны, в Development без них коды пишутся в лог
+
 ### Backend без Docker
 
 ```bash
@@ -70,11 +76,13 @@ npm run lint
 |------------------------|------------|
 | `client`               | клиенты (uuid PK, name, phone, email, created_at) |
 | `device`               | техника (type, manufacturer, model, serial_number) |
-| `repair_order`         | заказ на ремонт (FK client_id, device_id; status, total_price, preferred_visit_at, created_at) |
-| `repair_status_history`| история смены статусов заказа (status, changed_at, comment) |
+| `repair_order`         | заказ на ремонт (FK client_id - null до подтверждения email, device_id; status, total_price, problem_description, contact_email/contact_phone, preferred_visit_at, created_at) |
+| `repair_status_history`| история смены статусов заказа (status, changed_at, comment, changed_by - аккаунт мастера) |
 | `repair_order_service` | связка заказ↔услуга (FK repair_order_id, service_id; price) |
-| `service`              | прайс-лист услуг (name, description, price, is_active) |
-| `review`               | отзывы клиентов (FK client_id; rating, text, created_at) |
+| `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
+| `account`              | аккаунт входа (FK client_id 1:1; role - Client/Master, created_at) |
+| `auth_code`            | одноразовые коды входа на email (code, expires_at, failed_attempts, locked_until) |
+| `notification_log`     | лог уведомлений (FK repair_order_id; recipient, subject, message, status, attempts, created_at) |
 
 ## Архитектура server
 
@@ -91,26 +99,65 @@ server/
 
 Слои направлены внутрь: `Api` -> `Application` -> `Domain`, Репозитории - generic `IRepository<T>` + специализированные, scoped lifetime, batch-сохранение через `SaveChangesAsync`
 
+Аудит "кто/когда" - `AuditInterceptor`: проставляет `CreatedAt`/`ChangedAt`/`UpdatedAt` из `TimeProvider` и аккаунт из токена (`changed_by`/`updated_by`) в том же батче, без отдельной таблицы; аккаунт запроса даёт `ICurrentActor` (реализация в API читает клейм `sub`)
+
 ## Машина состояний заказа
 
 Смена статуса - только через `RepairOrder.ChangeStatus()`, карта переходов - `RepairStatusTransitions` в `Domain.Shared`
 Заказ создаётся фабрикой `RepairOrder.Create(...)`: до инициализации `Status == null`, `ChangeStatus` выбрасывает исключение
 
 ```
-Created → InDiagnostic → Agreed → InProgress → Ready → Completed; отмена (Cancelled) из Created/Agreed/InProgress
+PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready → Completed; отмена (Cancelled) из Created/Agreed/InProgress
 ```
+
+Гостевая заявка создаётся в `PendingContact` (клиента и аккаунта ещё нет, `ClientId` пуст) и активируется кодом на свой email: при подтверждении создаются клиент и аккаунт, заявка привязывается и переходит в `Created`; до этого мастер её не видит
 
 Каждая смена пишет запись в `repair_status_history` одним батчем. Запрещённый переход -> 409 Conflict. Конфликт параллельных изменений (токен конкурентности `xmin`) ловится в репозитории как `ConcurrencyConflictException` и тоже отдаётся как 409
 
 ## Эндпоинты API
 
-| Метод | Путь | Описание |
-|-------|------|----------|
-| GET | `/api/services` | прайс-лист активных услуг (HybridCache, 5 мин) |
-| GET | `/api/orders?status=&page=` | страница заявок панели мастера (фильтр по статусу, пагинация) |
-| GET | `/api/orders/{id}` | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов |
-| POST | `/api/orders` | создание заявки (клиент find-or-create по телефону/email, 201 + номер) |
-| PATCH | `/api/orders/{id}/status` | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
+| Метод | Путь | Доступ | Описание |
+|-------|------|--------|----------|
+| GET | `/api/services` | публично | прайс-лист активных услуг (HybridCache, 5 мин) |
+| POST/PUT/DELETE | `/api/services...` | Master | правка прайса (скрытие - `is_active=false`) |
+| GET | `/api/orders?status=&visitFrom=&visitTo=&page=` | Master | страница заявок панели мастера (фильтр по статусу и желаемой дате визита, пагинация; неподтверждённые не видны) |
+| GET | `/api/orders/{id}` | Client (свой) / Master | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов; чужой или неподтверждённый заказ - 404 |
+| POST | `/api/orders` | публично | создание заявки: без токена - `PendingContact` + код на email, с токеном - сразу `Created`; описание проблемы до 2000 символов; 201 + номер |
+| GET | `/api/me/orders?status=&page=` | Client | заказы клиента из клейма токена (новые сверху, пагинация; неподтверждённые не попадают) |
+| GET | `/api/me/orders/{id}` | Client | карточка своего заказа: устройство, услуги, стоимость, тайм-лайн; чужой - 404 |
+| GET | `/api/master/stats?period=Month\Quarter\All` | Master | статистика: завершённые ремонты по типам устройств и сумма (по моменту перехода в `Completed`) |
+| PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
+| POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
+| POST | `/api/auth/confirm` | публично | подтверждение кода: вход существующего аккаунта; аккаунт и клиент создаются только при подтверждении заявки, иначе 400; JWT + refresh в HttpOnly cookie |
+| POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
+
+## Уведомления (email)
+
+Отправка сообщений идёт через `INotifier`; реализация выбирается по настройкам секции `Email`:
+
+- **Resend SMTP** (`SmtpEmailNotifier`, MailKit) - когда заданы `Email__Password` (API-ключ) и `Email__FromAddress`; хост/порт/пользователь по умолчанию `smtp.resend.com` / `465` / `resend` (465 - неявный TLS, 587/2465/2587 - STARTTLS)
+- **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
+
+На демо домен не нужен: Resend разрешает отправителя `onboarding@resend.dev`, но письма уходят **только на email владельца ключа** - на демонстрации получатель один (свой ящик). Полноценная отправка клиентам появляется после подтверждения домена в Resend: добавляются DNS-записи (MX/TXT/DKIM), меняется `EMAIL_FROM`. `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
+
+Отзывы в базе не хранятся: на витрине показываются отзывы, спарсенные с Яндекс Карт (внешний источник)
+
+Смена статуса заказа отправляет клиенту письмо (после успешного сохранения): получатель - `contact_email` заявки или email клиента. Сбой провайдера PATCH не ломает - 3 попытки с backoff (`Notifications:MaxAttempts`, `Notifications:RetryDelay`, базовая пауза удваивается), результат пишется в `notification_log` (кому, когда, по какому заказу, `Sent`/`Failed`, число попыток)
+
+## Статистика
+
+`GET /api/master/stats?period=` считает только завершённые ремонты: дата события - момент перехода заказа в `Completed` (`repair_status_history.changed_at`), период отсчитывается с начала месяца (`Month`, по умолчанию), с начала квартала (`Quarter`) или без нижней границы (`All`)
+
+## Роли и доступ
+
+В access-токене есть клеймы `sub` (аккаунт), `client_id` и `role` (`Client`/`Master`)
+
+- **Client** - личный кабинет (`/api/me/orders`) и только собственные заказы: фильтр по `client_id` из клейма, чужой идентификатор неотличим от несуществующего (404), чтобы не раскрывать данные
+- Отдельной регистрации нет: аккаунт создаётся только при подтверждении email заявки (`POST /api/orders` → код → `POST /api/auth/confirm`); дальше это обычный вход по коду, а для неизвестного email без заявки `confirm` отдаёт 400 «Аккаунт не найден»
+- **Master** - панель заказов, смена статусов и правка прайса; публичный прайс читается без токена
+- Мастер-аккаунт: апсерт при старте по `Auth__MasterEmail` (роль Master, вход по коду из лога `INotifier` в демо)
+- Без токена защищённый эндпоинт - 401, с токеном без нужной роли - 403
+- Поля аудита "кто изменил" (`repair_status_history.changed_by`, `service.updated_by`) заполняет `AuditInterceptor` из `sub` текущего запроса
 
 Ошибки валидации возвращаются как `ValidationProblemDetails` со списком полей; при создании заявки обязательно должен быть телефон или почта, дата визита проверяется на рабочие часы и "не в прошлом"
 

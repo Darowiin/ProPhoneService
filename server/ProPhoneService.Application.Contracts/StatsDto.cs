@@ -1,0 +1,14 @@
+namespace ProPhoneService.Application.Contracts;
+
+/// <summary>
+/// Статистика дашборда мастера: завершённые ремонты за период
+/// </summary>
+/// <param name="FromUtc">Начало периода (UTC; <c>null</c> - всё время)</param>
+/// <param name="ToUtc">Конец периода (UTC, включительно)</param>
+/// <param name="CompletedTotalPrice">Сумма по завершённым заказам, руб</param>
+/// <param name="CompletedByDeviceType">Количество завершённых ремонтов по типам устройств</param>
+public record StatsDto(
+    DateTime? FromUtc,
+    DateTime? ToUtc,
+    decimal CompletedTotalPrice,
+    IReadOnlyList<DeviceTypeStatsDto> CompletedByDeviceType);

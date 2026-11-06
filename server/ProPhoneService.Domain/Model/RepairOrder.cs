@@ -19,11 +19,12 @@ public class RepairOrder : IEntity
     public required Guid Id { get; set; }
 
     /// <summary>
-    /// Идентификатор клиента, оформившего заказ
+    /// Идентификатор клиента, оформившего заказ;
+    /// <c>null</c> - заявка оставлена без входа и ждёт подтверждения email
     /// </summary>
     [ForeignKey(nameof(ClientId))]
     [Column("client_id")]
-    public required Guid ClientId { get; set; }
+    public required Guid? ClientId { get; set; }
 
     /// <summary>
     /// Идентификатор устройства в ремонте
@@ -57,6 +58,30 @@ public class RepairOrder : IEntity
     public DateTime? PreferredVisitAt { get; set; }
 
     /// <summary>
+    /// Описание проблемы со слов клиента (необязательно)
+    /// </summary>
+    [Column("problem_description")]
+    public string? ProblemDescription { get; set; }
+
+    /// <summary>
+    /// Имя, указанное в заявке
+    /// </summary>
+    [Column("contact_name")]
+    public string? ContactName { get; set; }
+
+    /// <summary>
+    /// Email, с которого оставлена заявка (нужен для подтверждения кодом)
+    /// </summary>
+    [Column("contact_email")]
+    public string? ContactEmail { get; set; }
+
+    /// <summary>
+    /// Телефон из заявки (необязательно, только для связи)
+    /// </summary>
+    [Column("contact_phone")]
+    public string? ContactPhone { get; set; }
+
+    /// <summary>
     /// Клиент, оформивший заказ
     /// </summary>
     public Client? Client { get; set; }
@@ -82,7 +107,12 @@ public class RepairOrder : IEntity
     /// <param name="clientId">Идентификатор клиента, оформившего заказ</param>
     /// <param name="deviceId">Идентификатор устройства в ремонте</param>
     /// <param name="preferredVisitAt">Предпочитаемая дата и время визита клиента (UTC, необязательно)</param>
-    public static RepairOrder Create(Guid clientId, Guid deviceId, DateTime? preferredVisitAt = null)
+    /// <param name="problemDescription">Описание проблемы со слов клиента (необязательно)</param>
+    public static RepairOrder Create(
+        Guid clientId,
+        Guid deviceId,
+        DateTime? preferredVisitAt = null,
+        string? problemDescription = null)
     {
         var order = new RepairOrder
         {
@@ -90,9 +120,40 @@ public class RepairOrder : IEntity
             ClientId = clientId,
             DeviceId = deviceId,
             PreferredVisitAt = preferredVisitAt,
+            ProblemDescription = problemDescription,
         };
 
         order.Start();
+        return order;
+    }
+
+    /// <summary>
+    /// Создать заявку без входа: клиент и аккаунт появятся после подтверждения email
+    /// </summary>
+    /// <param name="deviceId">Идентификатор устройства в ремонте</param>
+    /// <param name="contactEmail">Email для кода подтверждения</param>
+    /// <param name="contactPhone">Телефон из заявки (необязательно)</param>
+    /// <param name="preferredVisitAt">Предпочитаемая дата и время визита клиента (UTC, необязательно)</param>
+    /// <param name="problemDescription">Описание проблемы со слов клиента (необязательно)</param>
+    public static RepairOrder CreatePending(
+        Guid deviceId,
+        string contactEmail,
+        string? contactPhone,
+        DateTime? preferredVisitAt = null,
+        string? problemDescription = null)
+    {
+        var order = new RepairOrder
+        {
+            Id = Guid.NewGuid(),
+            ClientId = null,
+            DeviceId = deviceId,
+            ContactEmail = contactEmail,
+            ContactPhone = contactPhone,
+            PreferredVisitAt = preferredVisitAt,
+            ProblemDescription = problemDescription,
+        };
+
+        order.StartWith(RepairStatus.PendingContact);
         return order;
     }
 
@@ -102,12 +163,23 @@ public class RepairOrder : IEntity
     /// <exception cref="InvalidOperationException">Статус уже установлен</exception>
     public void Start()
     {
-        if (Status is not null)
+        StartWith(RepairStatus.Created);
+    }
+
+    /// <summary>
+    /// Привязать подтвердившегося клиента: заявка переходит из ожидания контакта в <see cref="RepairStatus.Created"/>
+    /// </summary>
+    /// <param name="clientId">Идентификатор клиента, подтвердившего email</param>
+    /// <exception cref="InvalidOperationException">Заявка не ожидает подтверждения контакта</exception>
+    public void ConfirmClient(Guid clientId)
+    {
+        if (Status != RepairStatus.PendingContact)
         {
-            throw new InvalidOperationException("Начальный статус заказа уже установлен");
+            throw new InvalidOperationException("Заявка не ожидает подтверждения контакта");
         }
 
-        Apply(RepairStatus.Created, comment: null);
+        ClientId = clientId;
+        ChangeStatus(RepairStatus.Created);
     }
 
     /// <summary>
@@ -130,6 +202,19 @@ public class RepairOrder : IEntity
         }
 
         Apply(next, comment);
+    }
+
+    /// <summary>
+    /// Установить начальный статус (только один раз, при создании)
+    /// </summary>
+    private void StartWith(RepairStatus initial)
+    {
+        if (Status is not null)
+        {
+            throw new InvalidOperationException("Начальный статус заказа уже установлен");
+        }
+
+        Apply(initial, comment: null);
     }
 
     /// <summary>
