@@ -277,10 +277,10 @@ export function deriveMasterStats(
 		if (sameWorkshopDay(created, new Date(now.getTime() - 86_400_000))) yesterdayCount++;
 		if (order.status === 'InProgress' || order.status === 'Agreed') inWork++;
 		if (order.status === 'InDiagnostic') inDiagnostic++;
-		if (
-			!backendMode && order.status === 'Completed' && order.price !== null &&
-			created.getTime() >= monthStart
-		) {
+		// API mode warms the price for every loaded row (detail enrichment),
+		// so the month revenue is computable locally — but only over the
+		// loaded page, hence the honest note for the backend mode.
+		if (order.status === 'Completed' && order.price !== null && created.getTime() >= monthStart) {
 			monthRevenue += order.price;
 			monthCompleted++;
 		}
@@ -296,12 +296,12 @@ export function deriveMasterStats(
 				: `${delta > 0 ? '+' : ''}${delta} к предыдущему дню`,
 		inWork,
 		inWorkNote: inDiagnostic > 0 ? `Ещё ${inDiagnostic} — на диагностике` : 'Все вне диагностики',
-		revenueMonth: backendMode ? null : `${priceFormat.format(monthRevenue)} ₽`,
+		revenueMonth: `${priceFormat.format(monthRevenue)} ₽`,
 		revenueNote: backendMode
-			? 'Итоговая стоимость не возвращается API'
+			? `по загруженным заявкам · ${monthCompleted} ${pluralize(monthCompleted, ['ремонт', 'ремонта', 'ремонтов'])}`
 			: `${monthName} ${now.getUTCFullYear()} · ${monthCompleted} ${pluralize(monthCompleted, ['ремонт', 'ремонта', 'ремонтов'])}`,
-		clientsCount: backendMode ? null : clients.size,
-		clientsNote: backendMode ? 'Клиенты не возвращаются API' : 'Клиенты в мок-данных',
+		clientsCount: clients.size,
+		clientsNote: backendMode ? 'уникальные клиенты в выборке' : 'Клиенты в мок-данных',
 		totalOrders: source.length,
 		statusCounts
 	};
