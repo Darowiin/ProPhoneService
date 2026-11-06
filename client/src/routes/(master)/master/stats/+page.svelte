@@ -53,9 +53,6 @@
 		};
 	});
 
-	// Approximate average price per completed repair type — doughnut weight.
-	const PRICE_HINT: Record<string, number> = { Phone: 2500, Tablet: 3500, Laptop: 4500 };
-
 	$effect(() => {
 		if (!stats || !byTypeCanvas || !byPriceCanvas) return;
 		byTypeChart?.destroy();
@@ -92,7 +89,9 @@
 				labels: entries.map(([type]) => TYPE_LABELS[type] ?? type),
 				datasets: [
 					{
-						data: entries.map(([type, count]) => count * (PRICE_HINT[type] ?? 0)),
+						// Share of completed repairs by device type — actual counts
+						// from the API, no invented price weighting.
+						data: entries.map(([, count]) => count),
 						backgroundColor: ['#245bff', '#6c8cff', '#a9baff'],
 						borderWidth: 0
 					}

@@ -16,7 +16,7 @@ export interface AuthSession {
 	email: string;
 	role: AccountRole;
 	clientId: string | null;
-	/** JWT access token; lives in memory + localStorage for quick restore. */
+	/** JWT access token; memory-only — it never reaches localStorage. */
 	accessToken: string;
 	/** ISO instant when the access token stops being valid. */
 	accessTokenExpiresAtUtc: string;

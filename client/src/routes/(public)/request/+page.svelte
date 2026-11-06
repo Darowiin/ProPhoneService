@@ -114,28 +114,14 @@
 		return null;
 	})());
 
-	// TEMP DIAGNOSTIC: expose form state via DOM (remove after debugging)
-	$effect(() => {
-		const el = document.documentElement;
-		el.dataset.fv = String(formValid);
-		el.dataset.fv_name = clientName.trim().length > 0 ? '1' : '0';
-		el.dataset.fv_dev = deviceName.length > 0 ? '1' : '0';
-		el.dataset.fv_devM = deviceManufacturer.length > 0 ? '1' : '0';
-		el.dataset.fv_touchedContact = String(touched.contact ?? false);
-		el.dataset.fv_contact = contactValue === '' ? 'empty' : contactIsEmail ? 'email' : 'phone';
-		el.dataset.fv_contactValid = String(contactValid);
-		el.dataset.fv_confirmEmail = confirmationEmail;
-		el.dataset.fv_visit = visitDate !== '' ? visitDate : 'empty';
-		el.dataset.fv_visitError = visitError ?? 'none';
-		el.dataset.fv_services = String(selectedServiceIds.length);
-	});
-
 	const formValid = $derived(
 		clientName.trim().length > 0 &&
 		deviceName.length > 0 &&
 		(deviceId !== CUSTOM_DEVICE || deviceManufacturer.length > 0) &&
 		selectedServiceIds.length > 0 &&
 		contactValid &&
+		// Гость с телефоном обязан дать почту: код активации уйдёт туда.
+		(session.user || contactIsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(confirmationEmail.trim())) &&
 		visitDate !== '' &&
 		visitTime !== '' &&
 		!visitError
@@ -275,9 +261,10 @@
 			return;
 		}
 
-		// Card 3: a guest order lands in PendingContact and activates after the
-		// email code confirm — route to the confirmation step first.
-		if (result.requiresEmailConfirmation && !session.user) {
+		// Card 3: any PendingContact result must pass through the email code
+		// screen — a stale local session is not enough to skip it (the API
+		// knows whether the order needs confirmation).
+		if (result.requiresEmailConfirmation) {
 			const param = new URLSearchParams({ id: result.id, email: guestEmail });
 			await goto(`/request/confirm?${param}`);
 			return;

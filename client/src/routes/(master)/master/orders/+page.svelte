@@ -35,10 +35,13 @@
 			.filter((o) => filter === 'all' || o.status === filter)
 			.filter((o) => {
 				if (!dateFilterActive) return true;
-				const created = Date.parse(o.createdAt);
+				// Same semantics as the API request (visitFrom/visitTo): the range
+				// applies to the preferred visit time, not the creation date.
+				const visit = Date.parse(o.preferredVisitAt ?? '');
+				if (Number.isNaN(visit)) return false;
 				const from = dateFrom ? Date.parse(`${dateFrom}T00:00:00`) : -Infinity;
 				const to = dateTo ? Date.parse(`${dateTo}T23:59:59.999`) : Infinity;
-				return created >= from && created <= to;
+				return visit >= from && visit <= to;
 			})
 			.filter((o) => {
 				const q = query.trim().toLowerCase();
@@ -73,10 +76,12 @@
 
 	async function loadOrders(): Promise<void> {
 		try {
+			loadError = false;
 			const list = await fetchOrders({ from: dateFrom || undefined, to: dateTo || undefined });
 			orders = list;
 			stats = deriveMasterStats(list, !isMockMode);
 		} catch {
+			loadError = true;
 			showToast('Не удалось загрузить заявки. Попробуйте обновить страницу.', 'error');
 		} finally {
 			loading = false;

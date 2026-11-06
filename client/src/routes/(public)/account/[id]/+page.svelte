@@ -26,7 +26,9 @@
 	$effect(() => {
 		if (!session.ready) return;
 		if (!session.user) {
-			goto('/login?next=/account');
+			// Keep the requested repair id: after sign-in the user must land
+			// back on /account/{id}, not on the cabinet root.
+			goto(`/login?next=${encodeURIComponent(page.url.pathname)}`);
 			return;
 		}
 		if (!orderId) {

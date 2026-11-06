@@ -21,15 +21,17 @@
 	let loadError = $state(false);
 	let filter = $state<'all' | 'InProgress' | 'Ready'>('all');
 
-	// Mockup chips: Все | В ремонте | Готово — «Выдана» counts as «Готово».
+	// Mockup chips: Все | В ремонте | Готово — «Готово» = Ready и Выдана.
 	const chips = $derived([
 		{ id: 'all' as const, label: 'Все', count: orders.length },
 		{ id: 'InProgress' as const, label: 'В ремонте', count: orders.filter((o) => o.status === 'InProgress').length },
-		{ id: 'Ready' as const, label: 'Готово', count: orders.filter((o) => o.status !== 'InProgress').length }
+		{ id: 'Ready' as const, label: 'Готово', count: orders.filter((o) => o.status === 'Ready' || o.status === 'Completed').length }
 	]);
 
 	const visible = $derived(
-		filter === 'all' ? orders : orders.filter((o) => (filter === 'Ready' ? o.status !== 'InProgress' : o.status === filter))
+		filter === 'all'
+			? orders
+			: orders.filter((o) => (filter === 'Ready' ? o.status === 'Ready' || o.status === 'Completed' : o.status === filter))
 	);
 	const currentRepair = $derived(orders.find((o) => o.status === 'InProgress') ?? null);
 

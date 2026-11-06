@@ -104,8 +104,11 @@
 		hidingId = service.id;
 		try {
 			await hideService(service.id);
+			// Do not refetch: the master fetcher is the public active-only list,
+			// so a reload would erase the hidden row (restore endpoint is yet to
+			// appear in the backend). Keep the row in place with its Скрыта tag.
+			services = services.map((s) => (s.id === service.id ? { ...s, isActive: false } : s));
 			showToast(`«${service.name}» скрыта из прайса`);
-			await reload();
 		} catch (error) {
 			showToast(error instanceof Error ? error.message : 'Не удалось скрыть услугу', 'error');
 		} finally {

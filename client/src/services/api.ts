@@ -10,7 +10,8 @@
 
 import { accountMock, serviceMeta, workshop } from '../mocks/db.ts';
 import { refresh as authServiceRefresh } from './auth.ts';
-import { bearerToken, dropSession } from '../lib/auth/session.svelte.ts';
+import { bearerToken, dropSession, installRefreshed } from '../lib/auth/session.svelte.ts';
+import type { AuthSession } from './auth.ts';
 
 export type RepairStatus =
 	| 'PendingContact'
@@ -393,10 +394,18 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 	const isAuthEndpoint = path.startsWith('/auth/');
 	if (response.status === 401 && !isAuthEndpoint) {
 		const refreshed = await authRefresh();
-		if (refreshed) response = await send();
+		if (refreshed) {
+			// Install the new token into the reactive session, otherwise the
+			// replay still carries the expired bearer and fails with 401.
+			installRefreshed(refreshed);
+			response = await send();
+		}
 	}
 
 	if (!response.ok) {
+		// The refresh cookie no longer works: nothing will recover the
+		// session server-side, so drop the stored identity.
+		if (response.status === 401) dropSession();
 		let message = `API вернул ${response.status}`;
 		let fieldErrors: Record<string, string[]> = {};
 		try {
@@ -418,16 +427,16 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 /**
  * Exchanges the HttpOnly refresh cookie for a fresh access token.
- * Returns true when the caller may replay the request.
+ * Returns the new session, or null when the cookie no longer works.
  */
-let refreshInFlight: Promise<boolean> | null = null;
+let refreshInFlight: Promise<AuthSession | null> | null = null;
 
-function authRefresh(): Promise<boolean> {
+function authRefresh(): Promise<AuthSession | null> {
 	refreshInFlight ??= (async () => {
 		const refreshed = await authServiceRefresh();
-		if (refreshed) return true;
+		if (refreshed) return refreshed;
 		dropSession();
-		return false;
+		return null;
 	})().finally(() => {
 		refreshInFlight = null;
 	});

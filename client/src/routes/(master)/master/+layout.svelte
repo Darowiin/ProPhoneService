@@ -30,6 +30,11 @@
 		{ id: 'reports', label: 'Отчёты', href: '/master/stats' }
 	];
 
+	// Breadcrumb follows the active section: the orders entry is the fallback.
+	const currentSectionLabel = $derived(
+		navItems.filter((item) => item.href !== null).find((item) => item.href && page.url.pathname.startsWith(item.href))?.label ?? 'Заявки'
+	);
+
 	const ordersCount = 12;
 </script>
 
@@ -84,7 +89,7 @@
 				<span class="topbar__crumb">Рабочий кабинет</span>
 				<span class="topbar__crumb-sep" aria-hidden="true">·</span>
 				<span class="topbar__crumb topbar__crumb--current">
-					{navItems.find((i) => i.id === 'orders')?.label ?? 'Заявки'}
+					{currentSectionLabel}
 				</span>
 			</nav>
 
