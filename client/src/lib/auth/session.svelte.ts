@@ -74,7 +74,7 @@ async function restoreOnce(): Promise<void> {
 				accessTokenExpiresAtUtc: stored.accessTokenExpiresAtUtc
 			};
 		} else {
-			const refreshed = await auth.refresh();
+			const refreshed = await auth.refresh(stored.email);
 			if (refreshed) {
 				current = refreshed;
 				persist(refreshed);

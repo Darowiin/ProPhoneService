@@ -89,8 +89,13 @@ export async function confirm(email: string, code: string): Promise<AuthSession>
 	};
 }
 
-/** Refreshes the access token using the HttpOnly refresh cookie. */
-export async function refresh(): Promise<AuthSession | null> {
+/**
+ * Refreshes the access token using the HttpOnly refresh cookie.
+ * `email` (optional) ties the refreshed session to the persisted identity:
+ * the refresh response carries no email itself, so at a cold start the
+ * caller passes the one from storage — never an empty string.
+ */
+export async function refresh(email?: string): Promise<AuthSession | null> {
 	if (isMockMode) return null;
 	try {
 		const res = await request<{
@@ -101,7 +106,7 @@ export async function refresh(): Promise<AuthSession | null> {
 			accessTokenExpiresAtUtc: string;
 		}>('/auth/refresh', { method: 'POST' });
 		return {
-			email: currentEmail ?? '',
+			email: email ?? currentEmail ?? '',
 			role: res.role,
 			clientId: res.clientId,
 			accessToken: res.accessToken,
