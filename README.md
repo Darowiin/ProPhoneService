@@ -25,61 +25,16 @@
 
 ## Запуск
 
-### Полный стек в Docker (PostgreSQL + API + фронт)
-
-Требуется установленный Docker Desktop (на Windows — с бэкендом WSL 2). Проверка: `docker version` и `docker compose version`.
-
-Фронтенд и рабочий API сейчас лежат на разных ветках, поэтому сначала объедините их в одну:
-
-```bash
-git checkout feature/frontend-core
-git fetch https://github.com/Darowiin/ProPhoneService.git feat/backend-foundation
-git merge FETCH_HEAD        # backend: контроллеры, Application-слои, свой Dockerfile
-```
-
-Затем поднимите всё:
+### Через Docker (PostgreSQL + API)
 
 ```bash
 cp .env.example .env        # при необходимости поправить пароль
-docker compose up --build   # db 5432, api 8080, web 8081
+docker compose up --build   # БД на 5432, API на 8080
 ```
 
-| Адрес | Что это |
-|---|---|
-| http://localhost:8081 | фронтенд (nginx, статика из `client/build`) |
-| http://localhost:8081/api/services | тот же origin, nginx проксирует в `api:8080` |
-| http://localhost:8080/health | health-check API |
-| localhost:5432 | PostgreSQL (`prophoneservice`) |
+API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
 
-Как это устроено:
-
-- `client/Dockerfile` — multi-stage: `node:22-alpine` собирает статику (`npm run build` → `build/`), `nginx:1.27-alpine` её раздаёт. `VITE_API_URL=/api` передаётся build-arg, потому что Vite подставляет `VITE_*` на этапе сборки.
-- `client/nginx.conf` — SPA-фолбэк `try_files $uri $uri/ /index.html` (adapter-static кладёт fallback в `index.html`) и `location /api/ → http://api:8080`. CORS не нужен: браузер ходит на тот же origin.
-- `docker-compose.yml` — сервис `web` собирается из `./client` и зависит от `api`.
-- API в режиме `Development` сам применяет миграции и создаёт БД при старте, поэтому прайс-лист засеивается автоматически.
-
-Полезные команды:
-
-```bash
-docker compose logs -f web      # логи nginx
-docker compose logs -f api      # логи API + миграции
-docker compose up --build web   # пересобрать только фронт после правок
-docker compose down             # остановить
-docker compose down -v          # остановить и стереть данные PostgreSQL
-```
-
-### Только БД и API в Docker, фронт локально
-
-Быстрый путь, если фронт удобнее править с HMR:
-
-```bash
-cp .env.example .env
-docker compose up --build db api    # API на 8080
-```
-
-```bash
-cd client && npm ci && cp .env.example .env && npm run dev   # 5173, прокси /api → 8080
-```
+### Backend без Docker
 
 Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
 
@@ -117,7 +72,7 @@ npm run dev
 
 Open `http://localhost:5173/`. Without `client/.env`, the frontend uses deterministic mock data.
 
-To connect the API from `Darowiin/ProPhoneService`, branch `feat/backend-foundation`, copy `client/.env.example` to `client/.env` and start that backend on port 8080. Vite proxies `/api` to `VITE_API_PROXY_TARGET`, so local development does not require CORS.
+To connect the backend, copy `client/.env.example` to `client/.env` and run any branch backend on port 8080. Vite proxies `/api` there, so local development does not require CORS.
 
 ```bash
 cd client
@@ -125,7 +80,7 @@ copy .env.example .env   # Windows PowerShell; use cp on POSIX
 npm run dev
 ```
 
-The backend branch currently exposes no client, service or price data in its order list DTO, so the master panel shows only the fields it returns and renders placeholders for monthly revenue and clients. For production, host the static frontend and proxy `/api` to the backend on the same origin; the backend branch does not configure CORS.
+For production hosting, serve the built static frontend (`npm run build` → `client/build`) and proxy `/api` to the backend on the same origin.
 
 ```bash
 npm run lint
