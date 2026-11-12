@@ -39,25 +39,29 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRepository, ServiceRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IAuthCodeRepository, AuthCodeRepository>();
+        services.AddScoped<IMessengerBindingRepository, MessengerBindingRepository>();
 
         return services;
     }
 
     /// <summary>
-    /// Регистрация отправителя сообщений: SMTP-провайдер (Resend) или лог-заглушка
+    /// Зарегистрировать отправителей Telegram и VK с ограниченным временем ожидания
     /// </summary>
-    /// <param name="services">Коллекция сервисов</param>
-    /// <param name="useEmailProvider"><c>true</c> - письма через SMTP, <c>false</c> - запись в лог (демо)</param>
-    public static IServiceCollection AddNotifier(this IServiceCollection services, bool useEmailProvider)
+    public static IServiceCollection AddNotifier(this IServiceCollection services)
     {
-        if (useEmailProvider)
+        services.AddHttpClient<TelegramBotNotifier>(client =>
         {
-            services.AddScoped<INotifier, SmtpEmailNotifier>();
-        }
-        else
+            client.BaseAddress = new Uri("https://api.telegram.org/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).RemoveAllLoggers();
+
+        services.AddHttpClient<VkNotifier>(client =>
         {
-            services.AddScoped<INotifier, LoggingNotifier>();
-        }
+            client.BaseAddress = new Uri("https://api.vk.com/method/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).RemoveAllLoggers();
+
+        services.AddScoped<INotifier, MessengerNotifier>();
 
         return services;
     }

@@ -5,12 +5,14 @@ using Microsoft.IdentityModel.Tokens;
 using ProPhoneService.Api.Auth;
 using ProPhoneService.Domain.Shared.Auditing;
 using ProPhoneService.Application;
+using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Shared;
 using ProPhoneService.Infrastructure.EfCore;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,15 +29,28 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 
 builder.Services.AddApplicationServices();
 
-// Email-провайдер: вне Development обязателен, в Development без настроек - лог-заглушка
-var emailOptions = builder.Configuration.GetSection("Email").Get<EmailOptions>() ?? new EmailOptions();
-if (!emailOptions.IsConfigured && !builder.Environment.IsDevelopment())
+// Пустые настройки допустимы в Development, отправка в ненастроенный канал вернёт 503
+var messengerOptions = builder.Configuration.GetSection("Messengers").Get<MessengerOptions>() ?? new();
+if (!builder.Environment.IsDevelopment()
+    && (!messengerOptions.Telegram.IsConfigured || !messengerOptions.Vk.IsConfigured))
 {
-    throw new InvalidOperationException(
-        "Email: не заданы SMTP-настройки провайдера; задайте Email__Password и Email__FromAddress в окружении");
+    throw new InvalidOperationException("Messengers: задайте настройки Telegram и VK в окружении");
 }
-builder.Services.AddSingleton(emailOptions);
-builder.Services.AddNotifier(emailOptions.IsConfigured);
+builder.Services.AddSingleton(messengerOptions);
+builder.Services.AddNotifier();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("messenger-links", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new()
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+});
 
 builder.Services.AddOptions<WorkshopOptions>()
     .Bind(builder.Configuration.GetSection("Workshop"))
@@ -108,6 +123,19 @@ var app = builder.Build();
 
 app.MapGet("/health", () => Results.Text("Healthy"));
 
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (MessengerUnavailableException ex) when (!context.Response.HasStarted)
+    {
+        await Results.Problem(statusCode: 503, title: "Мессенджер временно недоступен", detail: ex.Message,
+            extensions: new Dictionary<string, object?> { ["offlineOrderAvailable"] = true }).ExecuteAsync(context);
+    }
+});
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 

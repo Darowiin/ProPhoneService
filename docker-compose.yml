@@ -21,11 +21,14 @@ services:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
       Auth__MasterEmail: ${MASTER_EMAIL}
-      Email__Host: ${EMAIL_HOST:-smtp.resend.com}
-      Email__Port: ${EMAIL_PORT:-465}
-      Email__User: ${EMAIL_USER:-resend}
-      Email__Password: ${EMAIL_PASSWORD:-${RESEND_API_KEY:-}}
-      Email__FromAddress: ${EMAIL_FROM:-onboarding@resend.dev}
+      Messengers__Telegram__BotUsername: ${TELEGRAM_BOT_USERNAME:-}
+      Messengers__Telegram__Token: ${TELEGRAM_BOT_TOKEN:-}
+      Messengers__Telegram__WebhookSecret: ${TELEGRAM_WEBHOOK_SECRET:-}
+      Messengers__Vk__GroupId: ${VK_GROUP_ID:-0}
+      Messengers__Vk__Token: ${VK_GROUP_TOKEN:-}
+      Messengers__Vk__WebhookSecret: ${VK_WEBHOOK_SECRET:-}
+      Messengers__Vk__ConfirmationCode: ${VK_CONFIRMATION_CODE:-}
+      Messengers__Vk__ApiVersion: ${VK_API_VERSION:-5.199}
       ASPNETCORE_ENVIRONMENT: Development
     ports:
       - "8080:8080"

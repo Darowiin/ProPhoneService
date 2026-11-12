@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<OrderWorkflowService>();
         services.AddScoped<OrderCreationService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<MessengerBindingService>();
         services.AddScoped<MasterAccountSeeder>();
         services.AddScoped<StatisticsService>();
         services.AddScoped<StatusNotificationService>();

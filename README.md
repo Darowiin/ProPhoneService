@@ -40,7 +40,6 @@ API применяет миграции при старте в режиме ра
 
 `MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
 
-Письма через Resend: `RESEND_API_KEY` + `EMAIL_FROM` (`onboarding@resend.dev` на демо, `noreply@<домен>` после покупки домена); SMTP-параметры по умолчанию `smtp.resend.com`/`465`/`resend`, при смене провайдера переопределяются env `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD`. Вне Development эти настройки обязательны, в Development без них коды пишутся в лог
 
 ### Backend без Docker
 
@@ -152,18 +151,40 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 | POST | `/api/auth/confirm` | публично | подтверждение кода: вход существующего аккаунта; аккаунт и клиент создаются только при подтверждении заявки, иначе 400; JWT + refresh в HttpOnly cookie |
 | POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
 
-## Уведомления (email)
+## Уведомления (Telegram/VK)
 
-Отправка сообщений идёт через `INotifier`; реализация выбирается по настройкам секции `Email`:
+Доставка сообщений и привязка получателей работают через `INotifier`. `MessengerNotifier` выбирает отправителя по каналу: `TelegramBotNotifier` для Telegram или `VkNotifier` для VK. Отправка без настроек или при отказе провайдера завершается `MessengerUnavailableException`; API отвечает 503 с `offlineOrderAvailable: true` и предложением оформить заказ в мастерской. Коды и тексты сообщений в логи не выводятся.
 
-- **Resend SMTP** (`SmtpEmailNotifier`, MailKit) - когда заданы `Email__Password` (API-ключ) и `Email__FromAddress`; хост/порт/пользователь по умолчанию `smtp.resend.com` / `465` / `resend` (465 - неявный TLS, 587/2465/2587 - STARTTLS)
-- **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
+Настройки берутся из `Messengers` и env (плейсхолдеры — `.env.example`):
 
-На демо домен не нужен: Resend разрешает отправителя `onboarding@resend.dev`, но письма уходят **только на email владельца ключа** - на демонстрации получатель один (свой ящик). Полноценная отправка клиентам появляется после подтверждения домена в Resend: добавляются DNS-записи (MX/TXT/DKIM), меняется `EMAIL_FROM`. `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
+- `Messengers__Telegram__Token`, `Messengers__Telegram__BotUsername`, `Messengers__Telegram__WebhookSecret`
+- `Messengers__Vk__Token`, `Messengers__Vk__GroupId`, `Messengers__Vk__WebhookSecret`, `Messengers__Vk__ConfirmationCode`, `Messengers__Vk__ApiVersion`
 
-Отзывы в базе не хранятся: на витрине показываются отзывы, спарсенные с Яндекс Карт (внешний источник)
+Docker Compose сопоставляет им переменные `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`, `VK_WEBHOOK_SECRET`, `VK_CONFIRMATION_CODE`, `VK_API_VERSION`. В Production обязательны полные настройки обоих каналов; в Development приложение стартует без них, но отправка возвращает ошибку.
 
-Смена статуса заказа отправляет клиенту письмо (после успешного сохранения): получатель - `contact_email` заявки или email клиента. Сбой провайдера PATCH не ломает - 3 попытки с backoff (`Notifications:MaxAttempts`, `Notifications:RetryDelay`, базовая пауза удваивается), результат пишется в `notification_log` (кому, когда, по какому заказу, `Sent`/`Failed`, число попыток)
+### API привязки
+
+1. После создания гостевой заявки вызвать `POST /api/messengers/orders/{orderId}/link` с телом `{"channel":"Telegram"}` или `{"channel":"Vk"}`. Телефон берётся из заявки; ссылка создаётся только для `PendingContact` и истекает не позднее 5 минут с момента создания заявки
+2. Для существующего аккаунта использовать `POST /api/messengers/me/link` с JWT и таким же телом. Телефон берётся из профиля аккаунта; произвольный accountId передать нельзя
+3. Ответ содержит `channel`, `url`, `expiresAtUtc`. URL — одноразовый секрет, его нельзя публиковать или логировать. Он открывает Telegram с параметром `start` или диалог сообщества VK с `ref`
+4. Отправитель команды/сообщения из проверенного callback сохраняется как получатель. Привязка связывает телефон, указанный в заявке/профиле, с мессенджером; это не SMS-проверка владения SIM-картой
+
+Хэши токенов и привязки хранятся в `messenger_binding`; миграция `AddMessengerBindings` добавляет таблицу, индексы и внешние ключи. Для выдачи ссылок действует лимит 10 запросов в минуту на IP. Повторный callback того же отправителя безопасен; чужой отправитель не может использовать погашенную ссылку. Смена получателя уже привязанного телефона требует авторизованного аккаунта.
+
+### Подключение ботов
+
+- Telegram: создать бота в BotFather, задать имя и токен в env. Зарегистрировать webhook на публичный HTTPS URL `/api/messengers/telegram/webhook` через `setWebhook` с тем же `secret_token`, который задан в `WebhookSecret`. Разрешить обновления `message`. Обрабатывается `/start <token>` только из личного чата
+- VK: включить сообщения сообщества, получить токен с доступом к сообщениям, настроить Callback API на `/api/messengers/vk/webhook`, указать секрет, строку подтверждения и событие `message_new`. API проверяет `group_id`; принимаются только личные сообщения, где `from_id == peer_id`
+- Для получения webhook нужен доступный извне HTTPS endpoint; при локальном запуске можно использовать временный HTTPS-туннель
+- Настройка webhook выполняется владельцем бота/сообщества; приложение не регистрирует и не меняет внешние настройки автоматически
+
+Доставка использует `INotifier.SendAsync(channel, recipientId, text, cancellationToken)`. Метод `SendAsync(target, subject, text, cancellationToken)` принимает телефон, находит актуальную привязку и отправляет сообщение в её канал. Email как получатель не поддерживается.
+
+Привязка бота сохраняет получателя, но не активирует заявку и не выдаёт JWT. Действующие контракты заявки и авторизации принимают email; отправка кода на такой контакт возвращает 503, поскольку доставка доступна только через привязанный мессенджер.
+
+Тесты провайдеров используют HTTP-моки. Для регрессии атомарной привязки на PostgreSQL задать `PROPHONE_TEST_POSTGRES_CONNECTION` — подключение с правом создания БД — и выполнить `dotnet test server/ProPhoneService.Server.slnx`. Каждый интеграционный тест создаёт и удаляет отдельную БД `messenger_test_*`, включая применение миграций; рабочие таблицы приложения не изменяются.
+
+Протоколы: [Telegram Bot API](https://core.telegram.org/bots/api), [Telegram deep linking](https://core.telegram.org/bots/features#deep-linking), [официальная схема VK messages](https://github.com/VKCOM/vk-api-schema/tree/master/messages), [официальная схема VK callbacks](https://github.com/VKCOM/vk-api-schema/tree/master/callback).
 
 ## Статистика
 
