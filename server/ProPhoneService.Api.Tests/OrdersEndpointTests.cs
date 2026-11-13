@@ -214,7 +214,7 @@ public class OrdersEndpointTests
     [Fact]
     public async Task GetById_ExistingOrder_Returns200WithFullCard()
     {
-        var clientEntity = new Client { Id = Guid.NewGuid(), Name = "Иван", Phone = "+79001234567", Email = "ivan@example.com" };
+        var clientEntity = new Client { Id = Guid.NewGuid(), Name = "Иван", Phone = "+79001234567" };
         var device = new Device { Id = Guid.NewGuid(), Type = DeviceType.Phone, Manufacturer = "Apple", Model = "iPhone 13" };
         var order = RepairOrder.Create(clientEntity.Id, device.Id, new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc));
         while (order.Status != RepairStatus.InProgress)
@@ -225,7 +225,6 @@ public class OrdersEndpointTests
         order.TotalPrice = 2700m;
         order.ProblemDescription = "Не заряжается и греется";
         order.ContactName = "Контакт заявки";
-        order.ContactEmail = "order@example.com";
         order.ContactPhone = "+79009876543";
         var svcCharging = new Service { Id = Guid.NewGuid(), Name = "Замена разъема зарядки", Price = 1200m, IsActive = true };
         var svcBattery = new Service { Id = Guid.NewGuid(), Name = "Замена аккумулятора", Price = 1500m, IsActive = true };
@@ -247,7 +246,6 @@ public class OrdersEndpointTests
         var card = await response.Content.ReadFromJsonAsync<RepairOrderDetailDto>(_jsonOptions);
         Assert.NotNull(card);
         Assert.Equal(order.ContactName, card.ContactName);
-        Assert.Equal(order.ContactEmail, card.ContactEmail);
         Assert.Equal(order.ContactPhone, card.ContactPhone);
         Assert.Equal(order.Id, card.Id);
         Assert.Equal(RepairStatus.InProgress, card.Status);
@@ -257,7 +255,6 @@ public class OrdersEndpointTests
         Assert.NotNull(card.Client);
         Assert.Equal("Иван", card.Client.Name);
         Assert.Equal("+79001234567", card.Client.Phone);
-        Assert.Equal("ivan@example.com", card.Client.Email);
 
         // Услуги с зафиксированными ценами
         Assert.Equal(2, card.Services.Count);

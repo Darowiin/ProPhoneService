@@ -31,9 +31,9 @@ public class MasterAccountSeederTests
 
             Repository = new Mock<IClientRepository>();
             Repository
-                .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Setup(r => r.GetByPhoneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string email, CancellationToken _) =>
-                    Clients.FirstOrDefault(c => c.Email == email));
+                    Clients.FirstOrDefault(c => c.Phone == email));
             Repository
                 .Setup(r => r.AddAsync(It.IsAny<Client>(), It.IsAny<CancellationToken>()))
                 .Callback((Client c, CancellationToken _) => Clients.Add(c))
@@ -56,7 +56,8 @@ public class MasterAccountSeederTests
             Seeder = new MasterAccountSeeder(
                 Repository.Object,
                 Accounts.Object,
-                new AuthOptions { MasterEmail = masterEmail },
+                Mock.Of<IMessengerBindingRepository>(),
+                new AuthOptions { MasterPhone = masterEmail, MasterVkUserId = 42 },
                 NullLogger<MasterAccountSeeder>.Instance);
 
             AddedAccounts = accountList;
@@ -66,7 +67,7 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_WithoutMasterEmail_DoesNothing()
+    public async Task Ensure_WithoutMasterPhone_DoesNothing()
     {
         var store = new ClientStore(null);
 
@@ -79,15 +80,15 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_NewMasterEmail_CreatesClientAndMasterAccount()
+    public async Task Ensure_NewMasterPhone_CreatesClientAndMasterAccount()
     {
-        var store = new ClientStore("  Boss@Example.COM ");
+        var store = new ClientStore("  +79001234567 ");
 
         var changed = await store.Seeder.EnsureAsync();
 
         Assert.True(changed);
         var client = Assert.Single(store.Clients);
-        Assert.Equal("boss@example.com", client.Email);
+        Assert.Equal("+79001234567", client.Phone);
         Assert.Equal("Мастер", client.Name);
 
         var account = Assert.Single(store.AddedAccounts);
@@ -99,9 +100,9 @@ public class MasterAccountSeederTests
     [Fact]
     public async Task Ensure_ExistingClientWithClientAccount_PromotesToMaster()
     {
-        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Email = "boss@example.com" };
+        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Phone = "+79001234567" };
         var account = new Account { Id = Guid.NewGuid(), ClientId = client.Id, Role = AccountRole.Client };
-        var store = new ClientStore("boss@example.com", [account]);
+        var store = new ClientStore("+79001234567", [account]);
         store.Clients.Add(client);
 
         var changed = await store.Seeder.EnsureAsync();
@@ -114,16 +115,16 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_AlreadyMaster_IsIdempotent()
+    public async Task Ensure_AlreadyMasterWithoutBinding_CreatesBinding()
     {
-        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Email = "boss@example.com" };
+        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Phone = "+79001234567" };
         var account = new Account { Id = Guid.NewGuid(), ClientId = client.Id, Role = AccountRole.Master };
-        var store = new ClientStore("boss@example.com", [account]);
+        var store = new ClientStore("+79001234567", [account]);
         store.Clients.Add(client);
 
         var changed = await store.Seeder.EnsureAsync();
 
-        Assert.False(changed);
-        Assert.Equal(0, store.Saves);
+        Assert.True(changed);
+        Assert.Equal(1, store.Saves);
     }
 }

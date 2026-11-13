@@ -20,15 +20,15 @@ public class StatusNotificationService(
     /// <summary>
     /// Отправить клиенту уведомление о текущем статусе заказа
     /// </summary>
-    /// <remarks>Получатель - email заявки или клиента; без получателя уведомление не создаётся</remarks>
+    /// <remarks>Получатель - телефон заявки или клиента; без получателя уведомление не создаётся</remarks>
     public async Task NotifyStatusChangedAsync(
         RepairOrder order,
         CancellationToken cancellationToken = default)
     {
-        var recipient = FirstNonEmpty(order.ContactEmail, order.Client?.Email);
+        var recipient = FirstNonEmpty(order.ContactPhone, order.Client?.Phone);
         if (recipient is null)
         {
-            logger.LogWarning("Заказ {OrderId}: нет email для уведомления о смене статуса", order.Id);
+            logger.LogWarning("Заказ {OrderId}: нет телефон для уведомления о смене статуса", order.Id);
             return;
         }
 

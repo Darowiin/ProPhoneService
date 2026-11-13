@@ -27,7 +27,7 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
         builder.HasIndex(x => new { x.Status, x.CreatedAt }).IsDescending(false, true);
         builder.HasIndex(x => x.PreferredVisitAt);
         // Поиск неподтверждённых заявок при входе по коду
-        builder.HasIndex(x => x.ContactEmail);
+        builder.HasIndex(x => x.ContactPhone);
 
         builder
             .HasMany(x => x.StatusHistory)

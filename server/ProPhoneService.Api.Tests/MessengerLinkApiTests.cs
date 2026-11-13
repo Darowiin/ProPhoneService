@@ -21,7 +21,7 @@ public class MessengerLinkApiTests
     private static WebApplicationFactory<Program> Factory(Mock<IMessengerBindingRepository> repository) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
         {
-            host.UseSetting("Auth:MasterEmail", "");
+            host.UseSetting("Auth:MasterPhone", "");
             host.UseSetting("Database:MigrateOnStartup", "false");
             host.ConfigureTestServices(services =>
             {
@@ -45,7 +45,7 @@ public class MessengerLinkApiTests
     {
         var repository = new Mock<IMessengerBindingRepository>();
         var orders = new Mock<IRepairOrderRepository>();
-        var order = RepairOrder.CreatePending(Guid.NewGuid(), "legacy@example.com", "+79001234567");
+        var order = RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567");
         order.CreatedAt = DateTime.UtcNow;
         orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
         using var factory = Factory(repository).WithWebHostBuilder(host => host.ConfigureTestServices(services =>
@@ -73,7 +73,7 @@ public class MessengerLinkApiTests
     {
         var repository = new Mock<IMessengerBindingRepository>();
         var orders = new Mock<IRepairOrderRepository>();
-        var order = RepairOrder.CreatePending(Guid.NewGuid(), "legacy@example.com", "+79001234567");
+        var order = RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567");
         order.CreatedAt = DateTime.UtcNow;
         orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
         using var factory = Factory(repository).WithWebHostBuilder(host => host.ConfigureTestServices(services =>

@@ -1,6 +1,5 @@
 using System.Net;
 using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.DependencyInjection;
 using ProPhoneService.Infrastructure.EfCore.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -15,7 +14,7 @@ public class ProgramStartupTests
             host.UseSetting(WebHostDefaults.EnvironmentKey, environment);
             host.UseSetting("ConnectionStrings:Default", "Host=unused");
             host.UseSetting("Database:MigrateOnStartup", "false");
-            host.UseSetting("Auth:MasterEmail", "");
+            host.UseSetting("Auth:MasterPhone", "");
             host.UseSetting("Jwt:Key", new string('p', 48));
             host.UseSetting("Messengers:Vk:Token", "vk-test-token");
             host.UseSetting("Messengers:Vk:GroupId", "123");

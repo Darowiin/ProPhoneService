@@ -56,6 +56,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("BindingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("binding_id");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("text")
@@ -64,11 +68,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("email");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
@@ -82,9 +81,16 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_until");
 
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("BindingId");
+
+                    b.HasIndex("Phone")
                         .IsUnique();
 
                     b.ToTable("auth_code");
@@ -101,10 +107,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("Email")
-                        .HasColumnType("text")
-                        .HasColumnName("email");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -115,9 +117,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnName("phone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.HasIndex("Phone")
                         .IsUnique();
@@ -276,10 +275,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
 
-                    b.Property<string>("ContactEmail")
-                        .HasColumnType("text")
-                        .HasColumnName("contact_email");
-
                     b.Property<string>("ContactName")
                         .HasColumnType("text")
                         .HasColumnName("contact_name");
@@ -322,7 +317,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
 
                     b.HasIndex("ClientId");
 
-                    b.HasIndex("ContactEmail");
+                    b.HasIndex("ContactPhone");
 
                     b.HasIndex("DeviceId");
 
@@ -522,6 +517,15 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.AuthCode", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.MessengerBinding", null)
+                        .WithMany()
+                        .HasForeignKey("BindingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.MessengerBinding", b =>

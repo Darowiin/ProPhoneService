@@ -25,7 +25,7 @@ public class NotificationLog : IEntity
     public required Guid RepairOrderId { get; set; }
 
     /// <summary>
-    /// Получатель (email)
+    /// Телефон получателя
     /// </summary>
     [Column("recipient")]
     public string? Recipient { get; set; }

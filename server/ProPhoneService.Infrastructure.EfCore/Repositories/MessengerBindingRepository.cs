@@ -18,6 +18,13 @@ public class MessengerBindingRepository(ProPhoneServiceDbContext context)
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default) =>
         Set.AsNoTracking().Where(x => x.Channel == MessengerChannel.Vk && x.Phone == phone && x.RecipientId != null && x.LinkedAt != null)
+            .OrderByDescending(x => x.AccountId != null).ThenByDescending(x => x.LinkedAt)
+            .ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MessengerBinding?> GetByOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
+        Set.AsNoTracking().Where(x => x.Channel == MessengerChannel.Vk && x.OrderId == orderId
+            && x.RecipientId != null && x.LinkedAt != null)
             .OrderByDescending(x => x.LinkedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />

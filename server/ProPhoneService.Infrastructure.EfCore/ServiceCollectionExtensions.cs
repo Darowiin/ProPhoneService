@@ -63,6 +63,7 @@ public static class ServiceCollectionExtensions
             .RemoveAllLoggers();
 
         services.AddHostedService<VkLongPollService>();
+        services.AddHostedService<PendingOrderExpirationService>();
 
         services.AddScoped<INotifier, MessengerNotifier>();
 

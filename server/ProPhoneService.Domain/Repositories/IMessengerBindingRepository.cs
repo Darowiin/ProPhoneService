@@ -19,6 +19,11 @@ public interface IMessengerBindingRepository : IRepository<MessengerBinding>
     Task<MessengerBinding?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Найти последнюю привязку конкретной заявки
+    /// </summary>
+    Task<MessengerBinding?> GetByOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Привязать получателя, только если ссылка ещё не использована и не истекла
     /// </summary>
     Task<bool> TryBindAsync(string tokenHash, MessengerChannel channel, string recipientId,

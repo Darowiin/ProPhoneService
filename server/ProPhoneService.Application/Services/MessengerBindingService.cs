@@ -109,5 +109,11 @@ public class MessengerBindingService(IMessengerBindingRepository bindings,
         return await bindings.TryBindAsync(hash, channel, recipient, now, cancellationToken);
     }
 
+    /// <summary>
+    /// Получить сохранённую привязку после успешной обработки секрета
+    /// </summary>
+    public Task<MessengerBinding?> GetLinkedBindingAsync(string token, CancellationToken cancellationToken = default) =>
+        bindings.GetByTokenHashAsync(Hash(token), cancellationToken);
+
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 }

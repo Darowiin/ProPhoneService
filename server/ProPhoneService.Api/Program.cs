@@ -9,7 +9,6 @@ using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Shared;
 using ProPhoneService.Infrastructure.EfCore;
-using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -76,8 +75,12 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
 
 builder.Services.AddOptions<AuthOptions>()
     .Bind(builder.Configuration.GetSection("Auth"))
-    .Validate(o => string.IsNullOrWhiteSpace(o.MasterEmail) || new EmailAddressAttribute().IsValid(o.MasterEmail),
-        "Некорректный Auth:MasterEmail - укажите email мастера или оставьте пустым")
+    .Validate(o => string.IsNullOrWhiteSpace(o.MasterPhone) || PhoneNormalizer.TryNormalize(o.MasterPhone, out _),
+        "Некорректный Auth:MasterPhone - укажите телефон мастера или оставьте пустым")
+    .Validate(o => string.IsNullOrWhiteSpace(o.MasterPhone) ? o.MasterVkUserId == 0 : o.MasterVkUserId > 0,
+        "Auth: задайте MasterPhone и доверенный MasterVkUserId вместе")
+    .Validate(o => o.CodeLifetimeMinutes == 5 && o.MaxFailedCodeAttempts > 0 && o.LockoutMinutes > 0
+        && o.RequestCodeCooldownSeconds > 0, "Auth: код действует 5 минут, ограничения должны быть положительными")
     .ValidateOnStart();
 
 var jwtOptions = new JwtOptions
@@ -152,7 +155,7 @@ if (!string.IsNullOrWhiteSpace(connectionString))
         db.Database.Migrate();
     }
 
-    // Мастер-аккаунт: апсерт роли Master для Auth:MasterEmail (пусто - пропуск)
+    // Мастер-аккаунт: апсерт роли Master для Auth:MasterPhone (пусто - пропуск)
     await scope.ServiceProvider.GetRequiredService<MasterAccountSeeder>().EnsureAsync();
 }
 app.Run();

@@ -1,7 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.IdentityModel.Tokens;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
@@ -11,8 +13,7 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Вход по коду из email: запрос кода, подтверждение с созданием аккаунта и клиента, выдача и ротация токенов.
-/// Другие каналы (SMS/мессенджеры) - в следующих спринтах за абстракцией INotifier
+/// Вход и подтверждение заявки кодом, доставленным привязанному пользователю VK
 /// </summary>
 public class AuthService(
     IAccountRepository accountRepository,
@@ -23,192 +24,223 @@ public class AuthService(
     TimeProvider timeProvider,
     AuthOptions authOptions,
     JwtOptions jwtOptions,
-    IRefreshTokenStore refreshStore)
+    IRefreshTokenStore refreshStore,
+    IMessengerBindingRepository bindings)
 {
     /// <summary>
-    /// Запросить одноразовый код на email (с ограничением частоты запросов)
+    /// Запросить код через подтверждённую привязку VK с ограничением частоты
     /// </summary>
-    public async Task<AuthOutcome> RequestCodeAsync(
-        string? email,
-        CancellationToken cancellationToken = default)
+    public async Task<AuthOutcome> RequestCodeAsync(string? phone, CancellationToken cancellationToken = default,
+        Guid? orderId = null)
     {
-        if (!EmailNormalizer.TryNormalize(email, out var normalized))
+        if (!PhoneNormalizer.TryNormalize(phone, out var normalized))
         {
-            return AuthOutcome.Failure(400, "Некорректный email", "Укажите корректный адрес электронной почты");
+            return InvalidPhone();
         }
 
-        return await authCodeRepository.ExecuteForEmailAsync(normalized,
-            () => RequestCodeCoreAsync(normalized, cancellationToken), cancellationToken);
+        return await authCodeRepository.ExecuteForPhoneAsync(normalized,
+            () => RequestCodeCoreAsync(normalized, orderId, cancellationToken), cancellationToken);
     }
 
-    private async Task<AuthOutcome> RequestCodeCoreAsync(string normalized, CancellationToken cancellationToken)
+    private async Task<AuthOutcome> RequestCodeCoreAsync(string phone, Guid? orderId, CancellationToken ct)
     {
-        var authCode = await authCodeRepository.GetByEmailAsync(normalized, cancellationToken);
-        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var binding = orderId.HasValue
+            ? await bindings.GetByOrderAsync(orderId.Value, ct)
+            : await bindings.GetByPhoneAsync(phone, ct);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
 
-        if (authCode is not null && authCode.LockedUntil is not null && authCode.LockedUntil > nowUtc)
+        if (binding is null || binding.Phone != phone || binding.Channel != MessengerChannel.Vk
+            || binding.RecipientId is null || binding.LinkedAt is null)
         {
-            return AuthOutcome.Failure(429, "Контакт заблокирован",
-                $"Повторные попытки возможны после {FormatTime(authCode.LockedUntil.Value)} UTC");
+            return AuthOutcome.Failure(400, "VK не привязан", "Сначала откройте диалог VK по ссылке из заявки");
         }
 
-        if (authCode is not null
-            && authCode.CreatedAt > nowUtc.AddSeconds(-authOptions.RequestCodeCooldownSeconds))
+        if (binding.OrderId is { } pendingId)
         {
-            return AuthOutcome.Failure(429, "Код уже отправлен",
-                "Повторный запрос кода возможен позже");
+            var order = await orderRepository.GetByIdAsync(pendingId, ct);
+
+            if (order is null || order.Status != RepairStatus.PendingContact || order.CreatedAt.AddMinutes(5) <= now)
+            {
+                return AuthOutcome.Failure(400, "Срок подтверждения истёк", "Оформите новую заявку");
+            }
+        }
+
+        var authCode = await authCodeRepository.GetByPhoneAsync(phone, ct);
+
+        if (authCode?.LockedUntil > now)
+        {
+            return AuthOutcome.Failure(429, "Контакт заблокирован", "Повторите попытку после окончания блокировки");
+        }
+
+        if (authCode is not null && authCode.CreatedAt > now.AddSeconds(-authOptions.RequestCodeCooldownSeconds))
+        {
+            return AuthOutcome.Failure(429, "Код уже отправлен", "Повторный запрос кода возможен позже");
         }
 
         var code = GenerateCode();
-        var expiresAt = nowUtc.AddMinutes(authOptions.CodeLifetimeMinutes);
+        await notifier.SendAsync(MessengerChannel.Vk, binding.RecipientId,
+            $"Ваш код подтверждения: {code}\nСрок действия кода — 5 минут. Не передавайте его третьим лицам.", ct);
 
         if (authCode is null)
         {
-            authCode = new AuthCode
-            {
-                Id = Guid.NewGuid(),
-                Email = normalized,
-                Code = code,
-                ExpiresAt = expiresAt,
-                CreatedAt = nowUtc,
-            };
-            await authCodeRepository.AddAsync(authCode, cancellationToken);
+            authCode = new AuthCode { Id = Guid.NewGuid(), Phone = phone, Code = code };
+            await authCodeRepository.AddAsync(authCode, ct);
         }
         else
         {
-            authCode.Code = code;
-            authCode.ExpiresAt = expiresAt;
-            authCode.FailedAttempts = 0;
-            authCode.LockedUntil = null;
-            authCode.CreatedAt = nowUtc;
             authCodeRepository.Update(authCode);
         }
 
-        await authCodeRepository.SaveChangesAsync(cancellationToken);
-        await notifier.SendAsync(
-            normalized,
-            "Код подтверждения ProPhoneService",
-            $"Код подтверждения: {code}. Действителен {authOptions.CodeLifetimeMinutes} мин",
-            cancellationToken);
+        authCode.Code = code;
+        authCode.BindingId = binding.Id;
+        authCode.ExpiresAt = now.AddMinutes(5);
+        authCode.CreatedAt = now;
+        authCode.FailedAttempts = 0;
+        authCode.LockedUntil = null;
+        await authCodeRepository.SaveChangesAsync(ct);
 
         return AuthOutcome.SuccessNoContent();
     }
 
     /// <summary>
-    /// Подтвердить email кодом: верный код - аккаунт и клиент создаются (если email ещё нет)
-    /// или используются существующие; выдаются access и refresh-токены
+    /// Погасить код, активировать связанную заявку и выдать сессию аккаунта
     /// </summary>
-    public async Task<AuthOutcome> ConfirmAsync(
-        string? email,
-        string? code,
-        CancellationToken cancellationToken = default)
+    public async Task<AuthOutcome> ConfirmAsync(string? phone, string? code, CancellationToken cancellationToken = default)
     {
-        if (!EmailNormalizer.TryNormalize(email, out var normalized))
+        if (!PhoneNormalizer.TryNormalize(phone, out var normalized))
         {
-            return AuthOutcome.Failure(400, "Некорректный email", "Укажите корректный адрес электронной почты");
+            return InvalidPhone();
         }
 
         if (string.IsNullOrWhiteSpace(code))
         {
-            return AuthOutcome.Failure(400, "Код не введён", "Введите код из сообщения");
+            return AuthOutcome.Failure(400, "Код не введён", "Введите код из сообщения VK");
         }
 
-        return await authCodeRepository.ExecuteForEmailAsync(normalized,
-            () => ConfirmCoreAsync(normalized, code, cancellationToken), cancellationToken);
+        return await authCodeRepository.ExecuteForPhoneAsync(normalized,
+            () => ConfirmCoreAsync(normalized, code.Trim(), cancellationToken), cancellationToken);
     }
 
-    private async Task<AuthOutcome> ConfirmCoreAsync(string normalized, string code, CancellationToken cancellationToken)
+    private async Task<AuthOutcome> ConfirmCoreAsync(string phone, string code, CancellationToken ct)
     {
-        var authCode = await authCodeRepository.GetByEmailAsync(normalized, cancellationToken);
-        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var authCode = await authCodeRepository.GetByPhoneAsync(phone, ct);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
 
         if (authCode is null)
         {
             return AuthOutcome.Failure(400, "Код не запрошен", "Сначала запросите код подтверждения");
         }
 
-        if (authCode.LockedUntil is not null && authCode.LockedUntil > nowUtc)
+        if (authCode.LockedUntil > now)
         {
-            return AuthOutcome.Failure(429, "Контакт заблокирован",
-                $"Повторные попытки возможны после {FormatTime(authCode.LockedUntil.Value)} UTC");
+            return AuthOutcome.Failure(429, "Контакт заблокирован", "Повторите попытку после окончания блокировки");
         }
 
-        if (authCode.ExpiresAt < nowUtc)
+        if (authCode.ExpiresAt <= now)
         {
             return AuthOutcome.Failure(400, "Код истёк", "Запросите новый код подтверждения");
         }
 
-        if (authCode.Code != code.Trim())
+        if (authCode.Code != code)
         {
             authCode.FailedAttempts++;
             var blocked = authCode.FailedAttempts >= authOptions.MaxFailedCodeAttempts;
-
             if (blocked)
             {
-                authCode.LockedUntil = nowUtc.AddMinutes(authOptions.LockoutMinutes);
+                authCode.LockedUntil = now.AddMinutes(authOptions.LockoutMinutes);
             }
 
             authCodeRepository.Update(authCode);
-            await authCodeRepository.SaveChangesAsync(cancellationToken);
+            await authCodeRepository.SaveChangesAsync(ct);
 
-            return blocked
-                ? AuthOutcome.Failure(429, "Контакт заблокирован",
-                    $"Лимит неверных кодов ({authOptions.MaxFailedCodeAttempts}); разблокировка после {FormatTime(authCode.LockedUntil!.Value)} UTC")
-                : AuthOutcome.Failure(400, "Неверный код", "Проверьте код из сообщения");
+            return AuthOutcome.Failure(blocked ? 429 : 400, blocked ? "Контакт заблокирован" : "Неверный код",
+                "Проверьте код из сообщения VK");
         }
 
-        var pendingOrders = await orderRepository.GetPendingByEmailAsync(normalized, cancellationToken);
-
-        var client = await clientRepository.GetByEmailAsync(normalized, cancellationToken);
-        var account = client is null
-            ? null
-            : await accountRepository.GetByClientIdAsync(client.Id, cancellationToken);
-
-        // Регистрации отдельно нет: аккаунт создаётся только вместе с подтверждением заявки
-        // Без аккаунта и без заявки - вход недоступен
-        if ((client is null || account is null) && pendingOrders.Count == 0)
+        var binding = await bindings.GetByIdAsync(authCode.BindingId, ct);
+        if (binding is null || binding.Phone != phone || binding.Channel != MessengerChannel.Vk
+            || binding.RecipientId is null || binding.LinkedAt is null)
         {
-            return AuthOutcome.Failure(
-                400,
-                "Аккаунт не найден",
-                "Вход доступен после оформления заявки: подтвердите email из заявки на ремонт");
+            return AuthOutcome.Failure(400, "Привязка отсутствует", "Повторите привязку VK");
         }
 
-        var isNewClient = client is null;
-        client ??= new Client
+        RepairOrder? pending = null;
+        if (binding.OrderId is { } orderId)
         {
-            Id = Guid.NewGuid(),
-            Name = pendingOrders.FirstOrDefault()?.ContactName ?? normalized,
-            Phone = pendingOrders.FirstOrDefault()?.ContactPhone,
-            Email = normalized,
-        };
+            pending = await orderRepository.GetWithDetailsAsync(orderId, ct);
 
-        var isNewAccount = account is null;
-        account ??= new Account { Id = Guid.NewGuid(), ClientId = client.Id };
-
-        if (isNewClient)
-        {
-            await clientRepository.AddAsync(client, cancellationToken);
+            if (pending is null || pending.ContactPhone != phone || pending.Status != RepairStatus.PendingContact
+                || pending.CreatedAt.AddMinutes(5) <= now)
+            {
+                return AuthOutcome.Failure(400, "Срок подтверждения истёк", "Оформите новую заявку");
+            }
         }
 
-        if (isNewAccount)
+        Account? account;
+        Client? client;
+        if (binding.AccountId is { } boundAccountId)
         {
-            await accountRepository.AddAsync(account, cancellationToken);
+            account = await accountRepository.GetByIdAsync(boundAccountId, ct);
+            client = account is null ? null : await clientRepository.GetByIdAsync(account.ClientId, ct);
+
+            if (account is null || client is null || (!string.IsNullOrWhiteSpace(client.Phone) && client.Phone != phone))
+            {
+                return AuthOutcome.Failure(403, "Нет доступа", "Привязка не соответствует аккаунту");
+            }
+
+            if (string.IsNullOrWhiteSpace(client.Phone))
+            {
+                client.Phone = phone;
+            }
+        }
+        else
+        {
+            client = await clientRepository.GetByPhoneAsync(phone, ct);
+            account = client is null ? null : await accountRepository.GetByClientIdAsync(client.Id, ct);
         }
 
-        // Подтверждённые заявки привязываем к клиенту и активируем
-        foreach (var pendingOrder in pendingOrders)
+        if (account is null && pending is null)
         {
-            pendingOrder.ConfirmClient(client.Id);
+            return AuthOutcome.Failure(400, "Аккаунт не найден", "Сначала оформите и подтвердите заявку");
         }
 
-        // Код одноразовый: погашаем
+        if (account?.Role == AccountRole.Master
+            && (authOptions.MasterVkUserId <= 0 || binding.RecipientId != authOptions.MasterVkUserId.ToString(CultureInfo.InvariantCulture)))
+        {
+            return AuthOutcome.Failure(403, "Нет доступа", "Для мастера требуется настроенная привязка VK");
+        }
+
+        if (client is null)
+        {
+            client = new Client { Id = Guid.NewGuid(), Name = pending?.ContactName ?? phone, Phone = phone };
+            await clientRepository.AddAsync(client, ct);
+        }
+        else if (string.IsNullOrWhiteSpace(client.Name) && !string.IsNullOrWhiteSpace(pending?.ContactName))
+        {
+            client.Name = pending.ContactName;
+        }
+
+        if (account is null)
+        {
+            account = new Account { Id = Guid.NewGuid(), ClientId = client.Id };
+            await accountRepository.AddAsync(account, ct);
+        }
+
+        if (pending is not null)
+        {
+            pending.ConfirmClient(client.Id);
+        }
+
+        binding.OrderId = null;
+        binding.AccountId = account.Id;
         authCodeRepository.Remove(authCode);
+        await clientRepository.SaveChangesAsync(ct);
 
-        await clientRepository.SaveChangesAsync(cancellationToken);
-
-        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, account.Role, nowUtc));
+        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, account.Role, now));
     }
+
+    private static AuthOutcome InvalidPhone() =>
+        AuthOutcome.Failure(400, "Некорректный телефон", "Укажите телефон в формате +7XXXXXXXXXX");
 
     /// <summary>
     /// Ротация сессии: погасить старый refresh-токен и выдать новую пару токенов
@@ -242,9 +274,9 @@ public class AuthService(
         DateTime nowUtc)
     {
         var expiresAt = nowUtc.AddMinutes(authOptions.AccessTokenLifetimeMinutes);
-        var securityKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key!));
-        var credentials = new Microsoft.IdentityModel.Tokens.SigningCredentials(
-            securityKey, Microsoft.IdentityModel.Tokens.SecurityAlgorithms.HmacSha256);
+        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key!));
+        var credentials = new SigningCredentials(
+            securityKey, SecurityAlgorithms.HmacSha256);
 
         var token = new JwtSecurityToken(
             issuer: jwtOptions.Issuer,
@@ -271,14 +303,9 @@ public class AuthService(
         return new AuthTokens(accountId, clientId, role, accessToken, expiresAt, refreshToken);
     }
 
-    private static string FormatTime(DateTime utc)
-    {
-        return utc.ToString("HH:mm");
-    }
-
     private static string GenerateCode()
     {
-        return RandomNumberGenerator.GetInt32(1_000_000).ToString("D6");
+        return RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", CultureInfo.InvariantCulture);
     }
 
 }

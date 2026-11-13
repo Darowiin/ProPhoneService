@@ -4,5 +4,6 @@ namespace ProPhoneService.Application.Contracts;
 /// Ответ на создание заявки: номер (идентификатор) заявки
 /// </summary>
 /// <param name="Id">Номер заявки</param>
-/// <param name="RequiresEmailConfirmation">Заявка неактивна: подтвердите email кодом из письма</param>
-public record CreateOrderResponse(Guid Id, bool RequiresEmailConfirmation);
+/// <param name="RequiresContactConfirmation">Заявка неактивна: подтвердите контакт кодом из VK</param>
+/// <param name="MessengerLink">Ссылка привязки VK для гостевой заявки</param>
+public record CreateOrderResponse(Guid Id, bool RequiresContactConfirmation, MessengerLinkResponse? MessengerLink = null);

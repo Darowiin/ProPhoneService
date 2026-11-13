@@ -32,13 +32,6 @@ public class Client : IEntity
     public string? Phone { get; set; }
 
     /// <summary>
-    /// Email клиента (необязательно)
-    /// </summary>
-    [EmailAddress]
-    [Column("email")]
-    public string? Email { get; set; }
-
-    /// <summary>
     /// Дата и время регистрации клиента (UTC)
     /// </summary>
     [Column("created_at")]

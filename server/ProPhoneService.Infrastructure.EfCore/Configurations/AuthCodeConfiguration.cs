@@ -12,7 +12,8 @@ public class AuthCodeConfiguration : IEntityTypeConfiguration<AuthCode>
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<AuthCode> builder)
     {
-        // Один активный код на email
-        builder.HasIndex(x => x.Email).IsUnique();
+        // Один активный код на телефон
+        builder.HasIndex(x => x.Phone).IsUnique();
+        builder.HasOne<MessengerBinding>().WithMany().HasForeignKey(x => x.BindingId).OnDelete(DeleteBehavior.Cascade);
     }
 }

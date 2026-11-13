@@ -160,7 +160,7 @@ public class RepairStatusTransitionTests
     {
         if (target == RepairStatus.PendingContact)
         {
-            return RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null, DateTime.UtcNow.AddDays(1));
+            return RepairOrder.CreatePending(Guid.NewGuid(), null, DateTime.UtcNow.AddDays(1));
         }
 
         var order = CreateStartedOrder();

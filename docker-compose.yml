@@ -20,7 +20,8 @@ services:
     environment:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
-      Auth__MasterEmail: ${MASTER_EMAIL}
+      Auth__MasterPhone: ${MASTER_PHONE:-}
+      Auth__MasterVkUserId: ${MASTER_VK_USER_ID:-0}
       Messengers__Vk__GroupId: ${VK_GROUP_ID:-0}
       Messengers__Vk__Token: ${VK_GROUP_TOKEN:-}
       Messengers__Vk__ApiVersion: ${VK_API_VERSION:-5.199}

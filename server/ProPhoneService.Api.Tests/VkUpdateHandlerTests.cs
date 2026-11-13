@@ -31,7 +31,10 @@ public class VkUpdateHandlerTests
         var options = MessengerDeliveryTests.Options();
         var bindings = new MessengerBindingService(repo.Object, Mock.Of<IRepairOrderRepository>(),
             Mock.Of<IAccountRepository>(), Mock.Of<IClientRepository>(), options, TimeProvider.System);
-        var handler = new VkUpdateHandler(bindings, notifier.Object, options);
+        var handler = new VkUpdateHandler(bindings, notifier.Object, options,
+            new AuthService(Mock.Of<IAccountRepository>(), Mock.Of<IClientRepository>(),
+                Mock.Of<IAuthCodeRepository>(), Mock.Of<IRepairOrderRepository>(), notifier.Object,
+                TimeProvider.System, new(), new(), new InMemoryRefreshTokenStore(TimeProvider.System), repo.Object));
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
             type = "message_new", group_id = groupId,

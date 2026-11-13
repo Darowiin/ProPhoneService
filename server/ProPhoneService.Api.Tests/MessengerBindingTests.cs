@@ -27,7 +27,7 @@ public class MessengerBindingTests
     public async Task CreateLink_PersistsHashAndExpiresWithPendingOrder(MessengerChannel channel, string prefix)
     {
         var harness = new Harness();
-        var order = RepairOrder.CreatePending(Guid.NewGuid(), "old@example.com", "+79001234567");
+        var order = RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567");
         order.CreatedAt = _now.UtcDateTime.AddMinutes(-1);
         harness.Orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
         MessengerBinding? saved = null;
@@ -52,7 +52,7 @@ public class MessengerBindingTests
     public async Task ExpiredOrder_DoesNotCreateLink()
     {
         var harness = new Harness();
-        var order = RepairOrder.CreatePending(Guid.NewGuid(), "old@example.com", "+79001234567");
+        var order = RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567");
         order.CreatedAt = _now.UtcDateTime.AddMinutes(-5);
         harness.Orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
 

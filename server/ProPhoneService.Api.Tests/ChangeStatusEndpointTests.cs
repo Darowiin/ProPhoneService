@@ -99,7 +99,7 @@ public class ChangeStatusEndpointTests
     [Fact]
     public async Task ChangeStatus_PendingOrder_Returns404WithoutChanges()
     {
-        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), null);
         var store = new OrderStore { Order = pending };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -119,6 +119,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_ValidTransition_Returns204AndWritesHistory()
     {
         var order = NewOrder();
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -137,7 +138,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_Success_SendsNotificationAndWritesSentLog()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -151,7 +152,7 @@ public class ChangeStatusEndpointTests
 
         var log = Assert.Single(store.Logs);
         Assert.Equal(order.Id, log.RepairOrderId);
-        Assert.Equal("client@example.com", log.Recipient);
+        Assert.Equal("+79001234567", log.Recipient);
         Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
         Assert.Equal(1, log.Attempts);
         Assert.Contains("InDiagnostic", log.Message);
@@ -163,7 +164,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_ProviderUnavailable_RetriesThreeTimesAndKeepsStatusChange()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order, NotificationFailures = int.MaxValue };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -186,7 +187,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_ProviderRecoversOnThirdAttempt_LogsSent()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order, NotificationFailures = 2 };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -207,6 +208,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_NoRecipient_SkipsNotificationAndKeepsStatusChange()
     {
         var order = NewOrder();
+        order.ContactPhone = null;
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());

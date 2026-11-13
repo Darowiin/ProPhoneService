@@ -33,11 +33,6 @@ public record RepairOrderDetailDto(
     public string? ContactName { get; init; }
 
     /// <summary>
-    /// Email из формы заявки
-    /// </summary>
-    public string? ContactEmail { get; init; }
-
-    /// <summary>
     /// Телефон из формы заявки
     /// </summary>
     public string? ContactPhone { get; init; }

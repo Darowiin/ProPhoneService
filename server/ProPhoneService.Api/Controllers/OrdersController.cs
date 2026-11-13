@@ -140,7 +140,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// </summary>
     /// <remarks>
     /// Без токена заявка создаётся неподтверждённой (PendingContact) и активируется кодом
-    /// на email, который уходит через INotifier; с токеном клиент привязывается сразу
+    /// из VK после привязки контакта; с токеном клиент привязывается сразу
     /// </remarks>
     /// <param name="request">Данные заявки</param>
     [AllowAnonymous]
@@ -170,6 +170,6 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         return CreatedAtAction(
             nameof(GetById),
             new { id = orderId },
-            new CreateOrderResponse(orderId, result.RequiresEmailConfirmation));
+            new CreateOrderResponse(orderId, result.RequiresContactConfirmation, result.MessengerLink));
     }
 }

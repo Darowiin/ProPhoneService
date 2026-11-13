@@ -15,13 +15,6 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     Task<RepairOrder?> GetWithDetailsAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получить неподтверждённые заявки с указанным контактом email (для привязки после подтверждения кода)
-    /// </summary>
-    Task<IReadOnlyList<RepairOrder>> GetPendingByEmailAsync(
-        string contactEmail,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Получить страницу заказов клиента с фильтром по статусу, отсортированные по дате создания (новые сверху)
     /// </summary>
     /// <remarks>Для личного кабинета; неподтверждённые заявки не попадают</remarks>
@@ -35,7 +28,7 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Получить заказ для смены статуса: загружается с клиентом (нужен email для уведомления)
+    /// Получить заказ для смены статуса: загружается с клиентом (нужен телефон для уведомления)
     /// </summary>
     /// <returns>Заказ с загруженным клиентом или <c>null</c>, если не найден</returns>
     Task<RepairOrder?> GetForStatusChangeAsync(Guid id, CancellationToken cancellationToken = default);
@@ -75,4 +68,9 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
         int skip = 0,
         int take = 25,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Отменить просроченные неподтверждённые заявки и записать историю без уведомления
+    /// </summary>
+    Task<int> CancelExpiredPendingAsync(DateTime nowUtc, CancellationToken cancellationToken = default);
 }

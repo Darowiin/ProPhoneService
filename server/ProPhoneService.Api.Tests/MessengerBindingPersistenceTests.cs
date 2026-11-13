@@ -96,7 +96,7 @@ public class MessengerBindingPersistenceTests
         }
     }
 
-    private sealed class Database(string adminConnection, string name, string connection) : IAsyncDisposable
+    internal sealed class Database(string adminConnection, string name, string connection) : IAsyncDisposable
     {
         public ProPhoneServiceDbContext Context() => new(new DbContextOptionsBuilder<ProPhoneServiceDbContext>()
             .UseNpgsql(connection).Options);
@@ -128,7 +128,7 @@ public class MessengerBindingPersistenceTests
         {
             await using var context = Context();
             var device = new Device { Id = Guid.NewGuid(), Type = DeviceType.Phone, Manufacturer = "Test", Model = "Test" };
-            var order = RepairOrder.CreatePending(device.Id, "legacy@example.com", "+79001234567");
+            var order = RepairOrder.CreatePending(device.Id, "+79001234567");
             context.AddRange(device, order, new MessengerBinding { Id = Guid.NewGuid(), TokenHash = hash,
                 Channel = MessengerChannel.Vk, Phone = "+79001234567", OrderId = order.Id,
                 ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(5) });

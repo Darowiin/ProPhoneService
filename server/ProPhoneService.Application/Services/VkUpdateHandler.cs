@@ -9,7 +9,7 @@ namespace ProPhoneService.Application.Services;
 /// <summary>
 /// Привязка отправителя личного сообщения сообщества VK
 /// </summary>
-public class VkUpdateHandler(MessengerBindingService bindings, INotifier notifier, MessengerOptions options)
+public class VkUpdateHandler(MessengerBindingService bindings, INotifier notifier, MessengerOptions options, AuthService auth)
     : IVkUpdateHandler
 {
     /// <summary>
@@ -33,10 +33,18 @@ public class VkUpdateHandler(MessengerBindingService bindings, INotifier notifie
             return;
         }
 
+        var binding = await bindings.GetLinkedBindingAsync(Text(message, "ref")!, cancellationToken);
+        if (binding is null)
+        {
+            return;
+        }
+
         await notifier.SendAsync(MessengerChannel.Vk, senderId.ToString(CultureInfo.InvariantCulture),
             "Мессенджер успешно привязан!\nВаш аккаунт успешно привязан к профилю на сайте.\n"
             + "Теперь вы можете получать уведомления о состоянии ваших заявок через этот мессенджер.",
             cancellationToken);
+
+        await auth.RequestCodeAsync(binding.Phone, cancellationToken, binding.OrderId);
     }
 
     private static string? Text(JsonElement element, string name) =>
