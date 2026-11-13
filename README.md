@@ -157,26 +157,40 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 
 Настройки берутся из `Messengers` и env (плейсхолдеры — `.env.example`):
 
-- `Messengers__Telegram__Token`, `Messengers__Telegram__BotUsername`, `Messengers__Telegram__WebhookSecret`
+- `Messengers__Telegram__Token`, `Messengers__Telegram__BotUsername`, `Messengers__Telegram__UpdateMode`, `Messengers__Telegram__WebhookSecret`
 - `Messengers__Vk__Token`, `Messengers__Vk__GroupId`, `Messengers__Vk__WebhookSecret`, `Messengers__Vk__ConfirmationCode`, `Messengers__Vk__ApiVersion`
 
-Docker Compose сопоставляет им переменные `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_WEBHOOK_SECRET`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`, `VK_WEBHOOK_SECRET`, `VK_CONFIRMATION_CODE`, `VK_API_VERSION`. В Production обязательны полные настройки обоих каналов; в Development приложение стартует без них, но отправка возвращает ошибку.
+Docker Compose сопоставляет им переменные `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `TELEGRAM_UPDATE_MODE`, `TELEGRAM_WEBHOOK_SECRET`, `VK_GROUP_TOKEN`, `VK_GROUP_ID`, `VK_WEBHOOK_SECRET`, `VK_CONFIRMATION_CODE`, `VK_API_VERSION`. В Production обязательны полные настройки обоих каналов; в Development приложение стартует без них, но отправка возвращает ошибку.
 
 ### API привязки
 
 1. После создания гостевой заявки вызвать `POST /api/messengers/orders/{orderId}/link` с телом `{"channel":"Telegram"}` или `{"channel":"Vk"}`. Телефон берётся из заявки; ссылка создаётся только для `PendingContact` и истекает не позднее 5 минут с момента создания заявки
 2. Для существующего аккаунта использовать `POST /api/messengers/me/link` с JWT и таким же телом. Телефон берётся из профиля аккаунта; произвольный accountId передать нельзя
 3. Ответ содержит `channel`, `url`, `expiresAtUtc`. URL — одноразовый секрет, его нельзя публиковать или логировать. Он открывает Telegram с параметром `start` или диалог сообщества VK с `ref`
-4. Отправитель команды/сообщения из проверенного callback сохраняется как получатель. Привязка связывает телефон, указанный в заявке/профиле, с мессенджером; это не SMS-проверка владения SIM-картой
+4. Отправитель команды/сообщения из проверенного события сохраняется как получатель. После успешной привязки Telegram отправляет сообщение с подтверждением. Привязка связывает телефон, указанный в заявке/профиле, с мессенджером; это не SMS-проверка владения SIM-картой
 
 Хэши токенов и привязки хранятся в `messenger_binding`; миграция `AddMessengerBindings` добавляет таблицу, индексы и внешние ключи. Для выдачи ссылок действует лимит 10 запросов в минуту на IP. Повторный callback того же отправителя безопасен; чужой отправитель не может использовать погашенную ссылку. Смена получателя уже привязанного телефона требует авторизованного аккаунта.
 
 ### Подключение ботов
 
-- Telegram: создать бота в BotFather, задать имя и токен в env. Зарегистрировать webhook на публичный HTTPS URL `/api/messengers/telegram/webhook` через `setWebhook` с тем же `secret_token`, который задан в `WebhookSecret`. Разрешить обновления `message`. Обрабатывается `/start <token>` только из личного чата
-- VK: включить сообщения сообщества, получить токен с доступом к сообщениям, настроить Callback API на `/api/messengers/vk/webhook`, указать секрет, строку подтверждения и событие `message_new`. API проверяет `group_id`; принимаются только личные сообщения, где `from_id == peer_id`
-- Для получения webhook нужен доступный извне HTTPS endpoint; при локальном запуске можно использовать временный HTTPS-туннель
-- Настройка webhook выполняется владельцем бота/сообщества; приложение не регистрирует и не меняет внешние настройки автоматически
+Telegram поддерживает два режима получения событий. В обоих режимах нужны токен и имя бота из BotFather; обрабатывается `/start <token>` только из личного чата.
+
+**Polling — без домена и входящего HTTPS:**
+
+1. В `.env` задать `TELEGRAM_UPDATE_MODE=Polling`, `TELEGRAM_BOT_TOKEN` и `TELEGRAM_BOT_USERNAME`. `TELEGRAM_WEBHOOK_SECRET` в этом режиме не требуется
+2. Пересоздать API: `docker compose up -d --build --force-recreate api`
+3. Проверить `docker compose logs -f api`: должно появиться сообщение о запуске long polling
+4. Создать новую ссылку привязки через API, открыть её и нажать Start до истечения срока действия
+
+Приложение само отключает прежний webhook через `deleteWebhook`, сохраняя ожидающие события. Нужен исходящий HTTPS-доступ к `api.telegram.org`; входящие подключения от Telegram не нужны. Запускать polling следует только в одном экземпляре API на токен бота, включая локальные запуски.
+
+События обрабатываются последовательно. Следующий `getUpdates` подтверждает только успешно обработанные события; при ошибке запрос повторяется с прежним offset. После перезапуска возможна повторная доставка ещё не подтверждённого события, поэтому повторная привязка того же получателя безопасна. При повторной доставке сообщение об успешной привязке может прийти повторно. Токен бота, payload и секрет ссылки в логи не выводятся.
+
+**Webhook — публичный HTTPS:**
+
+Задать `TELEGRAM_UPDATE_MODE=Webhook` (режим по умолчанию) и `TELEGRAM_WEBHOOK_SECRET`. После пересоздания API зарегистрировать публичный HTTPS URL `/api/messengers/telegram/webhook` через `setWebhook` с тем же `secret_token`, разрешив обновления `message`. Регистрацию выполняет владелец бота; приложение не регистрирует webhook автоматически. В режиме Polling этот endpoint возвращает 404.
+
+**VK:** включить сообщения сообщества, получить токен с доступом к сообщениям, настроить Callback API на публичный HTTPS URL `/api/messengers/vk/webhook`, указать секрет, строку подтверждения и событие `message_new`. API проверяет `group_id`; принимаются только личные сообщения, где `from_id == peer_id`. Настройку Callback API выполняет владелец сообщества.
 
 Доставка использует `INotifier.SendAsync(channel, recipientId, text, cancellationToken)`. Метод `SendAsync(target, subject, text, cancellationToken)` принимает телефон, находит актуальную привязку и отправляет сообщение в её канал. Email как получатель не поддерживается.
 

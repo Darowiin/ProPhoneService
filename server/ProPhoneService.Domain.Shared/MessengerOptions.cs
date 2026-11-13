@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using SystemEnum = System.Enum;
 using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Domain.Shared;
@@ -50,11 +51,18 @@ public sealed class TelegramOptions
     public string WebhookSecret { get; set; } = "";
 
     /// <summary>
+    /// Режим получения событий Telegram
+    /// </summary>
+    public TelegramUpdateMode UpdateMode { get; set; } = TelegramUpdateMode.Webhook;
+
+    /// <summary>
     /// Полнота и допустимость настроек
     /// </summary>
     public bool IsConfigured => Regex.IsMatch(Token, @"^\d+:[A-Za-z0-9_-]+$")
         && Regex.IsMatch(BotUsername, @"^[A-Za-z0-9_]{5,32}$")
-        && Regex.IsMatch(WebhookSecret, @"^[A-Za-z0-9_-]{16,256}$");
+        && SystemEnum.IsDefined(UpdateMode)
+        && (UpdateMode == TelegramUpdateMode.Polling
+            || Regex.IsMatch(WebhookSecret, @"^[A-Za-z0-9_-]{16,256}$"));
 }
 
 /// <summary>

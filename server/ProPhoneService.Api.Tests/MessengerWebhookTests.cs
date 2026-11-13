@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using ProPhoneService.Domain.Model;
+using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared;
 using ProPhoneService.Domain.Shared.Enum;
@@ -23,6 +24,12 @@ public class MessengerWebhookTests
             host.UseSetting("Database:MigrateOnStartup", "false");
             host.ConfigureTestServices(services =>
             {
+                var notifier = new Mock<INotifier>();
+                notifier.Setup(x => x.SendAsync(It.IsAny<MessengerChannel>(), It.IsAny<string>(),
+                    It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+
+                services.RemoveAll<INotifier>();
+                services.AddSingleton(notifier.Object);
                 services.RemoveAll<MessengerOptions>();
                 services.AddSingleton(MessengerDeliveryTests.Options());
                 services.RemoveAll<IMessengerBindingRepository>();

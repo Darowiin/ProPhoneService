@@ -61,6 +61,14 @@ public static class ServiceCollectionExtensions
             client.Timeout = TimeSpan.FromSeconds(15);
         }).RemoveAllLoggers();
 
+        services.AddHttpClient("TelegramPolling", client =>
+        {
+            client.BaseAddress = new Uri("https://api.telegram.org/");
+            client.Timeout = TimeSpan.FromSeconds(40);
+        }).RemoveAllLoggers();
+
+        services.AddHostedService<TelegramPollingService>();
+
         services.AddScoped<INotifier, MessengerNotifier>();
 
         return services;

@@ -2,6 +2,7 @@ using Mapster;
 using MapsterMapper;
 using Microsoft.Extensions.DependencyInjection;
 using ProPhoneService.Application.Mapper;
+using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 
 namespace ProPhoneService.Application;
@@ -22,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<OrderCreationService>();
         services.AddScoped<AuthService>();
         services.AddScoped<MessengerBindingService>();
+        services.AddScoped<ITelegramUpdateHandler, TelegramUpdateHandler>();
         services.AddScoped<MasterAccountSeeder>();
         services.AddScoped<StatisticsService>();
         services.AddScoped<StatusNotificationService>();

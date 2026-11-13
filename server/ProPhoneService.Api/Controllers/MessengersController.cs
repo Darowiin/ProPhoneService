@@ -17,7 +17,7 @@ namespace ProPhoneService.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/messengers")]
-public class MessengersController(MessengerBindingService bindings, MessengerOptions options) : ControllerBase
+public class MessengersController(MessengerBindingService bindings, MessengerOptions options, ITelegramUpdateHandler telegramUpdates) : ControllerBase
 {
     /// <summary>
     /// Получить ссылку в бота после создания гостевой заявки
@@ -66,29 +66,23 @@ public class MessengersController(MessengerBindingService bindings, MessengerOpt
     [RequestSizeLimit(65536)]
     public async Task<IActionResult> Telegram(JsonElement update, CancellationToken cancellationToken)
     {
+        if (options.Telegram.UpdateMode != TelegramUpdateMode.Webhook)
+        {
+            return NotFound();
+        }
+
         if (!options.Telegram.IsConfigured
             || !SecretEquals(options.Telegram.WebhookSecret, Request.Headers["X-Telegram-Bot-Api-Secret-Token"].ToString()))
+        {
             return Unauthorized();
+        }
 
         if (update.ValueKind != JsonValueKind.Object)
+        {
             return BadRequest();
+        }
 
-        if (!update.TryGetProperty("message", out var message))
-            return Ok();
-
-        if (message.ValueKind != JsonValueKind.Object || !message.TryGetProperty("chat", out var chat)
-            || chat.ValueKind != JsonValueKind.Object || Text(chat, "type") != "private"
-            || !message.TryGetProperty("from", out var sender) || sender.ValueKind != JsonValueKind.Object
-            || !Number(chat, "id", out var chatId) || !Number(sender, "id", out var senderId)
-            || chatId != senderId || chatId <= 0)
-            return Ok();
-
-        var text = Text(message, "text");
-
-        if (text is null || !text.StartsWith("/start ", StringComparison.Ordinal))
-            return Ok();
-
-        await bindings.BindAsync(MessengerChannel.Telegram, text[7..].Trim(), senderId, cancellationToken);
+        await telegramUpdates.HandleAsync(update, cancellationToken);
 
         return Ok();
     }

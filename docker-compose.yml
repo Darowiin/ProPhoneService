@@ -21,6 +21,7 @@ services:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
       Auth__MasterEmail: ${MASTER_EMAIL}
+      Messengers__Telegram__UpdateMode: ${TELEGRAM_UPDATE_MODE:-Webhook}
       Messengers__Telegram__BotUsername: ${TELEGRAM_BOT_USERNAME:-}
       Messengers__Telegram__Token: ${TELEGRAM_BOT_TOKEN:-}
       Messengers__Telegram__WebhookSecret: ${TELEGRAM_WEBHOOK_SECRET:-}
