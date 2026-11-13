@@ -20,7 +20,7 @@ public class MessengerBindingPersistenceTests
         {
             await using var context = database.Context();
             await start.Task;
-            return await new MessengerBindingRepository(context).TryBindAsync(hash, MessengerChannel.Telegram,
+            return await new MessengerBindingRepository(context).TryBindAsync(hash, MessengerChannel.Vk,
                 recipient.ToString(), DateTime.UtcNow);
         }).ToArray();
 
@@ -42,11 +42,11 @@ public class MessengerBindingPersistenceTests
         await database.SeedAsync("second");
         await using var first = database.Context();
         var firstRepository = new MessengerBindingRepository(first);
-        Assert.True(await firstRepository.TryBindAsync("first", MessengerChannel.Telegram, "42", DateTime.UtcNow));
+        Assert.True(await firstRepository.TryBindAsync("first", MessengerChannel.Vk, "42", DateTime.UtcNow));
         await using var second = database.Context();
         var secondRepository = new MessengerBindingRepository(second);
 
-        var result = await secondRepository.TryBindAsync("second", MessengerChannel.Telegram, "99", DateTime.UtcNow);
+        var result = await secondRepository.TryBindAsync("second", MessengerChannel.Vk, "99", DateTime.UtcNow);
 
         Assert.False(result);
         Assert.Equal("42", (await secondRepository.GetByPhoneAsync("+79001234567"))!.RecipientId);
@@ -61,12 +61,30 @@ public class MessengerBindingPersistenceTests
         await using var context = database.Context();
         var repository = new MessengerBindingRepository(context);
 
-        var expired = await repository.TryBindAsync("expired", MessengerChannel.Telegram, "42", DateTime.UtcNow);
-        var wrongChannel = await repository.TryBindAsync("valid", MessengerChannel.Vk, "42", DateTime.UtcNow);
+        var expired = await repository.TryBindAsync("expired", MessengerChannel.Vk, "42", DateTime.UtcNow);
+        var wrongChannel = await repository.TryBindAsync("valid", (MessengerChannel)0, "42", DateTime.UtcNow);
 
         Assert.False(expired);
         Assert.False(wrongChannel);
         Assert.All(await context.Set<MessengerBinding>().ToListAsync(), value => Assert.Null(value.RecipientId));
+    }
+
+    [PostgresFact]
+    public async Task RetiredChannelBindings_AreIgnoredWithoutReadingUnsupportedEnum()
+    {
+        await using var database = await Database.CreateAsync();
+        await database.SeedAsync("retired");
+        await using var context = database.Context();
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE messenger_binding SET channel = 'RetiredChannel', recipient_id = '42', linked_at = now()");
+        var repository = new MessengerBindingRepository(context);
+
+        var byPhone = await repository.GetByPhoneAsync("+79001234567");
+        var byToken = await repository.GetByTokenHashAsync("retired");
+
+        Assert.Null(byPhone);
+        Assert.Null(byToken);
+        Assert.Single(await context.RepairOrders.ToListAsync());
     }
 
     public sealed class PostgresFactAttribute : FactAttribute
@@ -112,7 +130,7 @@ public class MessengerBindingPersistenceTests
             var device = new Device { Id = Guid.NewGuid(), Type = DeviceType.Phone, Manufacturer = "Test", Model = "Test" };
             var order = RepairOrder.CreatePending(device.Id, "legacy@example.com", "+79001234567");
             context.AddRange(device, order, new MessengerBinding { Id = Guid.NewGuid(), TokenHash = hash,
-                Channel = MessengerChannel.Telegram, Phone = "+79001234567", OrderId = order.Id,
+                Channel = MessengerChannel.Vk, Phone = "+79001234567", OrderId = order.Id,
                 ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(5) });
             await context.SaveChangesAsync();
         }

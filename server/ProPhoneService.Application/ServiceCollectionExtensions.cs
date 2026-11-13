@@ -23,7 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<OrderCreationService>();
         services.AddScoped<AuthService>();
         services.AddScoped<MessengerBindingService>();
-        services.AddScoped<ITelegramUpdateHandler, TelegramUpdateHandler>();
+        services.AddScoped<IVkUpdateHandler, VkUpdateHandler>();
         services.AddScoped<MasterAccountSeeder>();
         services.AddScoped<StatisticsService>();
         services.AddScoped<StatusNotificationService>();

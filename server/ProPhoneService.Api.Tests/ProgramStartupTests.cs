@@ -1,4 +1,7 @@
 using System.Net;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using ProPhoneService.Infrastructure.EfCore.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -14,13 +17,13 @@ public class ProgramStartupTests
             host.UseSetting("Database:MigrateOnStartup", "false");
             host.UseSetting("Auth:MasterEmail", "");
             host.UseSetting("Jwt:Key", new string('p', 48));
-            host.UseSetting("Messengers:Telegram:Token", "123:test-token");
-            host.UseSetting("Messengers:Telegram:BotUsername", "test_bot");
-            host.UseSetting("Messengers:Telegram:WebhookSecret", new string('t', 32));
             host.UseSetting("Messengers:Vk:Token", "vk-test-token");
             host.UseSetting("Messengers:Vk:GroupId", "123");
-            host.UseSetting("Messengers:Vk:WebhookSecret", new string('v', 32));
-            host.UseSetting("Messengers:Vk:ConfirmationCode", "confirmation");
+            host.ConfigureTestServices(services =>
+            {
+                var polling = services.Single(x => x.ImplementationType == typeof(VkLongPollService));
+                services.Remove(polling);
+            });
             configure?.Invoke(host);
         });
 
@@ -46,7 +49,6 @@ public class ProgramStartupTests
     }
 
     [Theory]
-    [InlineData("Telegram")]
     [InlineData("Vk")]
     public void Startup_ProductionWithoutMessengerSettings_FailsFast(string channel)
     {
@@ -86,7 +88,6 @@ public class ProgramStartupTests
         using var factory = Factory("Development", host =>
         {
             host.UseSetting("ConnectionStrings:Default", "");
-            host.UseSetting("Messengers:Telegram:Token", "");
             host.UseSetting("Messengers:Vk:Token", "");
         });
         using var client = factory.CreateClient();

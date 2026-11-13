@@ -45,29 +45,24 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Зарегистрировать отправителей Telegram и VK с ограниченным временем ожидания
+    /// Зарегистрировать доставку VK и Long Poll с ограниченным временем ожидания
     /// </summary>
     public static IServiceCollection AddNotifier(this IServiceCollection services)
     {
-        services.AddHttpClient<TelegramBotNotifier>(client =>
-        {
-            client.BaseAddress = new Uri("https://api.telegram.org/");
-            client.Timeout = TimeSpan.FromSeconds(15);
-        }).RemoveAllLoggers();
-
         services.AddHttpClient<VkNotifier>(client =>
         {
             client.BaseAddress = new Uri("https://api.vk.com/method/");
             client.Timeout = TimeSpan.FromSeconds(15);
         }).RemoveAllLoggers();
 
-        services.AddHttpClient("TelegramPolling", client =>
+        services.AddHttpClient("VkLongPoll", client =>
         {
-            client.BaseAddress = new Uri("https://api.telegram.org/");
+            client.BaseAddress = new Uri("https://api.vk.com/method/");
             client.Timeout = TimeSpan.FromSeconds(40);
-        }).RemoveAllLoggers();
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
 
-        services.AddHostedService<TelegramPollingService>();
+        services.AddHostedService<VkLongPollService>();
 
         services.AddScoped<INotifier, MessengerNotifier>();
 

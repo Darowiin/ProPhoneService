@@ -3,7 +3,7 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Contracts;
 
 /// <summary>
-/// Отправка кодов и уведомлений через Telegram и VK
+/// Отправка кодов и уведомлений через VK
 /// </summary>
 public interface INotifier
 {
@@ -11,7 +11,7 @@ public interface INotifier
     /// Отправить текст получателю выбранного мессенджера
     /// </summary>
     /// <param name="channel">Выбранный канал</param>
-    /// <param name="recipientId">Идентификатор личного чата Telegram или пользователя VK</param>
+    /// <param name="recipientId">Идентификатор пользователя VK</param>
     /// <param name="text">Текст сообщения</param>
     /// <param name="cancellationToken">Отмена операции</param>
     Task SendAsync(MessengerChannel channel, string recipientId, string text,

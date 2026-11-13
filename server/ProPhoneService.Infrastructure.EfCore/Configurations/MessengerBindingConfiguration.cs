@@ -5,7 +5,7 @@ using ProPhoneService.Domain.Model;
 namespace ProPhoneService.Infrastructure.EfCore.Configurations;
 
 /// <summary>
-/// Хранение привязок Telegram и VK
+/// Хранение привязок VK
 /// </summary>
 public class MessengerBindingConfiguration : IEntityTypeConfiguration<MessengerBinding>
 {

@@ -5,16 +5,15 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Infrastructure.EfCore.Notifications;
 
 /// <summary>
-/// Выбор отправителя по каналу, выбранному клиентом
+/// Доставка уведомлений через VK
 /// </summary>
-public class MessengerNotifier(TelegramBotNotifier telegram, VkNotifier vk,
+public class MessengerNotifier(VkNotifier vk,
     IMessengerBindingRepository bindings) : INotifier
 {
     /// <inheritdoc />
     public Task SendAsync(MessengerChannel channel, string recipientId, string text,
         CancellationToken cancellationToken = default) => channel switch
     {
-        MessengerChannel.Telegram => telegram.SendAsync(recipientId, text, cancellationToken),
         MessengerChannel.Vk => vk.SendAsync(recipientId, text, cancellationToken),
         _ => throw new ArgumentOutOfRangeException(nameof(channel)),
     };

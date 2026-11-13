@@ -11,7 +11,7 @@ namespace ProPhoneService.Api.Tests;
 public class NotifierRegistrationTests
 {
     [Fact]
-    public void AddNotifier_RegistersMessengerRouterAndBothProviders()
+    public void AddNotifier_RegistersMessengerRouterAndVkProvider()
     {
         var services = new ServiceCollection();
         services.AddSingleton(new MessengerOptions());
@@ -21,11 +21,9 @@ public class NotifierRegistrationTests
         using var scope = provider.CreateScope();
 
         var notifier = scope.ServiceProvider.GetRequiredService<INotifier>();
-        var telegram = scope.ServiceProvider.GetRequiredService<TelegramBotNotifier>();
         var vk = scope.ServiceProvider.GetRequiredService<VkNotifier>();
 
         Assert.IsType<MessengerNotifier>(notifier);
-        Assert.NotNull(telegram);
         Assert.NotNull(vk);
     }
 }

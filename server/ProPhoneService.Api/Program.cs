@@ -32,9 +32,9 @@ builder.Services.AddApplicationServices();
 // Пустые настройки допустимы в Development, отправка в ненастроенный канал вернёт 503
 var messengerOptions = builder.Configuration.GetSection("Messengers").Get<MessengerOptions>() ?? new();
 if (!builder.Environment.IsDevelopment()
-    && (!messengerOptions.Telegram.IsConfigured || !messengerOptions.Vk.IsConfigured))
+    && !messengerOptions.Vk.IsConfigured)
 {
-    throw new InvalidOperationException("Messengers: задайте настройки Telegram и VK в окружении");
+    throw new InvalidOperationException("Messengers: задайте настройки VK в окружении");
 }
 builder.Services.AddSingleton(messengerOptions);
 builder.Services.AddNotifier();

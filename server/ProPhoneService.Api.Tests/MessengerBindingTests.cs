@@ -23,7 +23,6 @@ public class MessengerBindingTests
     }
 
     [Theory]
-    [InlineData(MessengerChannel.Telegram, "https://t.me/test_bot?start=")]
     [InlineData(MessengerChannel.Vk, "https://vk.me/club123?ref=")]
     public async Task CreateLink_PersistsHashAndExpiresWithPendingOrder(MessengerChannel channel, string prefix)
     {
@@ -57,21 +56,21 @@ public class MessengerBindingTests
         order.CreatedAt = _now.UtcDateTime.AddMinutes(-5);
         harness.Orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
 
-        var result = await harness.Service.CreateForOrderAsync(order.Id, MessengerChannel.Telegram);
+        var result = await harness.Service.CreateForOrderAsync(order.Id, MessengerChannel.Vk);
 
         Assert.Null(result);
         harness.Bindings.Verify(x => x.AddAsync(It.IsAny<MessengerBinding>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Theory]
-    [InlineData(MessengerChannel.Vk, 1, null)]
-    [InlineData(MessengerChannel.Telegram, 0, null)]
-    [InlineData(MessengerChannel.Telegram, 1, "2")]
+    [InlineData((MessengerChannel)0, 1, null)]
+    [InlineData(MessengerChannel.Vk, 0, null)]
+    [InlineData(MessengerChannel.Vk, 1, "2")]
     public async Task WrongChannelExpiredOrOtherRecipient_CannotBind(MessengerChannel channel, int minutes, string? existingRecipient)
     {
         var harness = new Harness();
         var binding = new MessengerBinding { Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567",
-            Channel = MessengerChannel.Telegram, ExpiresAt = _now.UtcDateTime.AddMinutes(minutes), RecipientId = existingRecipient };
+            Channel = MessengerChannel.Vk, ExpiresAt = _now.UtcDateTime.AddMinutes(minutes), RecipientId = existingRecipient };
         harness.Bindings.Setup(x => x.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(binding);
 
         var result = await harness.Service.BindAsync(channel, Token, 42);
@@ -87,9 +86,9 @@ public class MessengerBindingTests
         var harness = new Harness();
         harness.Bindings.Setup(x => x.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MessengerBinding { Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567",
-                Channel = MessengerChannel.Telegram, ExpiresAt = _now.UtcDateTime.AddMinutes(1), RecipientId = "42" });
+                Channel = MessengerChannel.Vk, ExpiresAt = _now.UtcDateTime.AddMinutes(1), RecipientId = "42" });
 
-        var result = await harness.Service.BindAsync(MessengerChannel.Telegram, Token, 42);
+        var result = await harness.Service.BindAsync(MessengerChannel.Vk, Token, 42);
 
         Assert.True(result);
         harness.Bindings.Verify(x => x.TryBindAsync(It.IsAny<string>(), It.IsAny<MessengerChannel>(), It.IsAny<string>(),

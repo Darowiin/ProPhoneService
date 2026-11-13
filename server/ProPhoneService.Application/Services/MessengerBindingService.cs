@@ -71,15 +71,13 @@ public class MessengerBindingService(IMessengerBindingRepository bindings,
         }, cancellationToken);
         await bindings.SaveChangesAsync(cancellationToken);
 
-        var url = channel == MessengerChannel.Telegram
-            ? $"https://t.me/{options.Telegram.BotUsername}?start={token}"
-            : $"https://vk.me/club{options.Vk.GroupId.ToString(CultureInfo.InvariantCulture)}?ref={token}";
+        var url = $"https://vk.me/club{options.Vk.GroupId.ToString(CultureInfo.InvariantCulture)}?ref={token}";
 
         return new MessengerLinkResponse(channel, url, expiresAtUtc);
     }
 
     /// <summary>
-    /// Погасить ссылку только для ожидаемого канала и получателя из проверенного webhook
+    /// Погасить ссылку только для ожидаемого канала и получателя из проверенного события VK
     /// </summary>
     public async Task<bool> BindAsync(MessengerChannel channel, string? token, long recipientId,
         CancellationToken cancellationToken = default)

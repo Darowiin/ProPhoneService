@@ -13,11 +13,11 @@ public class MessengerBindingRepository(ProPhoneServiceDbContext context)
 {
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) =>
-        Set.AsNoTracking().FirstOrDefaultAsync(x => x.TokenHash == tokenHash, cancellationToken);
+        Set.AsNoTracking().FirstOrDefaultAsync(x => x.Channel == MessengerChannel.Vk && x.TokenHash == tokenHash, cancellationToken);
 
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default) =>
-        Set.AsNoTracking().Where(x => x.Phone == phone && x.RecipientId != null && x.LinkedAt != null)
+        Set.AsNoTracking().Where(x => x.Channel == MessengerChannel.Vk && x.Phone == phone && x.RecipientId != null && x.LinkedAt != null)
             .OrderByDescending(x => x.LinkedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
