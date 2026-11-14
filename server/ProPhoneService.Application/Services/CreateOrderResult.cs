@@ -17,6 +17,11 @@ public class CreateOrderResult
     public Guid? OrderId { get; private init; }
 
     /// <summary>
+    /// Постоянный номер сохранённой заявки
+    /// </summary>
+    public string? OrderNumber { get; private init; }
+
+    /// <summary>
     /// Ошибки валидации: ключ — имя поля, значение — сообщения (заполнены при неудаче)
     /// </summary>
     public IReadOnlyDictionary<string, string[]>? Errors { get; private init; }
@@ -41,8 +46,8 @@ public class CreateOrderResult
     /// </summary>
     /// <param name="orderId">Номер созданной заявки</param>
     /// <param name="requiresContactConfirmation">Заявка ждёт подтверждения контакта (гостевая)</param>
-    public static CreateOrderResult Success(Guid orderId, bool requiresContactConfirmation = false, MessengerLinkResponse? messengerLink = null) =>
-        new() { OrderId = orderId, RequiresContactConfirmation = requiresContactConfirmation, MessengerLink = messengerLink };
+    public static CreateOrderResult Success(Guid orderId, bool requiresContactConfirmation = false, MessengerLinkResponse? messengerLink = null, string? orderNumber = null) =>
+        new() { OrderId = orderId, RequiresContactConfirmation = requiresContactConfirmation, MessengerLink = messengerLink, OrderNumber = orderNumber };
 
     /// <summary>
     /// Неудача с ошибками по полям

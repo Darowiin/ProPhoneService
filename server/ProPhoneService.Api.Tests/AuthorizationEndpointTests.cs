@@ -220,7 +220,7 @@ public class AuthorizationEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic" });
+            new { status = "InProgress" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(RepairStatus.Created, order.Status);

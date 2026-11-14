@@ -126,11 +126,11 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Взяли в диагностику" });
+            new { status = "InProgress", comment = "Взяли в диагностику" });
 
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
-        var entry = Assert.Single(order.StatusHistory, h => h.Status == RepairStatus.InDiagnostic);
-        Assert.Equal("Взяли в диагностику", entry.Comment);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
+        var entry = Assert.Single(order.StatusHistory, h => h.Status == RepairStatus.InProgress);
+        Assert.Null(entry.Comment);
         Assert.Equal(1, store.SavedCount);
     }
 
@@ -145,7 +145,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Взяли в диагностику" });
+            new { status = "InProgress", comment = "Взяли в диагностику" });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(1, store.NotificationCalls);
@@ -155,9 +155,9 @@ public class ChangeStatusEndpointTests
         Assert.Equal("+79001234567", log.Recipient);
         Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
         Assert.Equal(1, log.Attempts);
-        Assert.Contains("InDiagnostic", log.Message);
-        Assert.Contains("Взяли в диагностику", log.Message);
-        Assert.Equal($"Статус заказа: {RepairStatus.InDiagnostic}", log.Subject);
+        Assert.Contains("В ремонте", log.Message);
+        Assert.DoesNotContain("Взяли в диагностику", log.Message);
+        Assert.Equal("В ремонте", log.Subject);
     }
 
     [Fact]
@@ -171,11 +171,11 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         // Сбой провайдера не ломает PATCH: смена статуса применена
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
         Assert.Equal(3, store.NotificationCalls);
 
         var log = Assert.Single(store.Logs);
@@ -194,7 +194,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(3, store.NotificationCalls);
@@ -215,7 +215,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(0, store.NotificationCalls);
@@ -243,7 +243,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_BackwardTransition_Returns409()
     {
         var order = NewOrder();
-        order.ChangeStatus(RepairStatus.InDiagnostic);
+        order.ChangeStatus(RepairStatus.InProgress);
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -253,7 +253,7 @@ public class ChangeStatusEndpointTests
             new { status = "Created", comment = (string?)null }); // назад тоже нельзя
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
         Assert.Equal(0, store.SavedCount);
     }
 
@@ -266,7 +266,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{Guid.NewGuid()}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(0, store.SavedCount);
@@ -276,7 +276,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_TerminalStatus_Returns409()
     {
         var order = NewOrder();
-        foreach (var next in new[] { RepairStatus.InDiagnostic, RepairStatus.Agreed, RepairStatus.InProgress })
+        foreach (var next in new[] { RepairStatus.InProgress })
         {
             order.ChangeStatus(next);
         }
@@ -293,7 +293,7 @@ public class ChangeStatusEndpointTests
 
         response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Воскрешение" });
+            new { status = "InProgress", comment = "Воскрешение" });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(RepairStatus.Cancelled, order.Status);
@@ -309,8 +309,25 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("InDiagnostic")]
+    [InlineData("Agreed")]
+    public async Task RemovedStatus_IsRejectedByApi(string status)
+    {
+        var order = NewOrder();
+        var store = new OrderStore { Order = order };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, store.SavedCount);
+        Assert.Equal(RepairStatus.Created, order.Status);
     }
 }

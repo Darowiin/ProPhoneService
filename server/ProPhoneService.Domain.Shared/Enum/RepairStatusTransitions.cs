@@ -7,9 +7,7 @@ public static class RepairStatusTransitions
 {
     private static readonly Dictionary<RepairStatus, RepairStatus[]> _map = new()
     {
-        [RepairStatus.Created] = [RepairStatus.InDiagnostic, RepairStatus.Cancelled],
-        [RepairStatus.InDiagnostic] = [RepairStatus.Agreed],
-        [RepairStatus.Agreed] = [RepairStatus.InProgress, RepairStatus.Cancelled],
+        [RepairStatus.Created] = [RepairStatus.InProgress, RepairStatus.Cancelled],
         [RepairStatus.InProgress] = [RepairStatus.Ready, RepairStatus.Cancelled],
         [RepairStatus.Ready] = [RepairStatus.Completed],
         [RepairStatus.Completed] = [],

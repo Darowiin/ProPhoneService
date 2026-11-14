@@ -103,12 +103,10 @@ public class OrderWorkflowService(
     /// </summary>
     /// <param name="id">Идентификатор заказа</param>
     /// <param name="status">Целевой статус</param>
-    /// <param name="comment">Комментарий к смене (необязательно)</param>
     /// <returns>Результат операции; <see cref="ChangeStatusResult.Success"/> - заказ сохранён</returns>
     public async Task<ChangeStatusResult> ChangeStatusAsync(
         Guid id,
         RepairStatus status,
-        string? comment,
         CancellationToken cancellationToken = default)
     {
         var order = await orderRepository.GetForStatusChangeAsync(id, cancellationToken);
@@ -119,7 +117,7 @@ public class OrderWorkflowService(
 
         try
         {
-            order.ChangeStatus(status, comment);
+            order.ChangeStatus(status);
         }
         catch (InvalidStatusTransitionException)
         {

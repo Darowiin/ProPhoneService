@@ -25,15 +25,20 @@ public class StatusNotificationService(
         RepairOrder order,
         CancellationToken cancellationToken = default)
     {
-        var recipient = FirstNonEmpty(order.ContactPhone, order.Client?.Phone);
-        if (recipient is null)
+        var notification = NotificationMessages.Status(order.Status, order.OrderNumber);
+        if (notification is null)
         {
-            logger.LogWarning("Заказ {OrderId}: нет телефон для уведомления о смене статуса", order.Id);
             return;
         }
 
-        var subject = $"Статус заказа: {order.Status}";
-        var message = BuildMessage(order);
+        var recipient = FirstNonEmpty(order.ContactPhone, order.Client?.Phone);
+        if (recipient is null)
+        {
+            logger.LogWarning("Заказ {OrderId}: нет телефона для уведомления о смене статуса", order.Id);
+            return;
+        }
+
+        var (subject, message) = notification.Value;
         var maxAttempts = Math.Max(1, notificationOptions.MaxAttempts);
         var attempts = 0;
         var status = NotificationDeliveryStatus.Failed;
@@ -95,15 +100,6 @@ public class StatusNotificationService(
                 attempts,
                 recipient);
         }
-    }
-
-    private static string BuildMessage(RepairOrder order)
-    {
-        var comment = order.StatusHistory.Count > 0 ? order.StatusHistory[^1].Comment : null;
-
-        return string.IsNullOrWhiteSpace(comment)
-            ? $"Заказ {order.Id}: новый статус - {order.Status}"
-            : $"Заказ {order.Id}: новый статус - {order.Status}. Комментарий: {comment}";
     }
 
     private static string? FirstNonEmpty(params string?[] values)

@@ -149,7 +149,7 @@ public class OrdersEndpointTests
         Assert.Equal("iPhone 13", items[0].Device.Model);
         Assert.Equal("Apple", items[0].Device.Manufacturer);
         Assert.Equal("Phone", items[0].Device.Type);
-        // Тайм-лайн: Created -> InDiagnostic -> Agreed -> InProgress
+        // Тайм-лайн: Created -> InProgress
         Assert.NotEmpty(items[0].StatusTimeline);
         Assert.Equal(RepairStatus.Created, items[0].StatusTimeline[0].Status);
         Assert.Equal(RepairStatus.InProgress, items[0].StatusTimeline[^1].Status);
@@ -222,6 +222,8 @@ public class OrdersEndpointTests
             order.ChangeStatus(RepairStatusTransitions.GetAllowed(order.Status!.Value).First());
         }
 
+        order.StatusHistory[^1].Comment = "Скрытый комментарий мастера";
+
         order.TotalPrice = 2700m;
         order.ProblemDescription = "Не заряжается и греется";
         order.ContactName = "Контакт заявки";
@@ -245,6 +247,12 @@ public class OrdersEndpointTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var card = await response.Content.ReadFromJsonAsync<RepairOrderDetailDto>(_jsonOptions);
         Assert.NotNull(card);
+        Assert.Equal(order.OrderNumber, card.OrderNumber);
+        Assert.Equal("В ремонте", card.StatusName);
+        var json = await response.Content.ReadAsStringAsync();
+        Assert.Contains("orderNumber", json);
+        Assert.DoesNotContain("comment", json, StringComparison.OrdinalIgnoreCase);
+
         Assert.Equal(order.ContactName, card.ContactName);
         Assert.Equal(order.ContactPhone, card.ContactPhone);
         Assert.Equal(order.Id, card.Id);
@@ -283,7 +291,7 @@ public class OrdersEndpointTests
     public async Task GetPage_VisitDateRange_Returns200WithOnlyOrdersInRange()
     {
         var (oldOrder, oldDevice) = MakeOrderWithVisit(RepairStatus.Created, new DateTime(2026, 10, 1, 10, 0, 0, DateTimeKind.Utc));
-        var (newOrder, newDevice) = MakeOrderWithVisit(RepairStatus.Agreed, new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc));
+        var (newOrder, newDevice) = MakeOrderWithVisit(RepairStatus.InProgress, new DateTime(2026, 10, 20, 10, 0, 0, DateTimeKind.Utc));
         var source = new OrderSource
         {
             Orders = [oldOrder, newOrder],

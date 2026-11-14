@@ -20,6 +20,8 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
             .IsRowVersion();
 
         builder.Property(x => x.Status).HasConversion<string>();
+        builder.Property(x => x.SequenceNumber).HasDefaultValueSql("nextval('repair_order_number_seq')");
+        builder.HasIndex(x => x.SequenceNumber).IsUnique();
 
         builder.HasIndex(x => x.ClientId);
         builder.HasIndex(x => x.DeviceId);

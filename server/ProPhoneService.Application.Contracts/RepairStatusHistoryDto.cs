@@ -1,4 +1,5 @@
 using ProPhoneService.Domain.Shared.Enum;
+using ProPhoneService.Domain.Shared;
 
 namespace ProPhoneService.Application.Contracts;
 
@@ -7,8 +8,12 @@ namespace ProPhoneService.Application.Contracts;
 /// </summary>
 /// <param name="Status">Статус, в который перешёл заказ</param>
 /// <param name="ChangedAt">Дата и время смены статуса (UTC)</param>
-/// <param name="Comment">Комментарий к смене статуса (может отсутствовать)</param>
 public record RepairStatusHistoryDto(
     RepairStatus Status,
-    DateTime ChangedAt,
-    string? Comment);
+    DateTime ChangedAt)
+{
+    /// <summary>
+    /// Русское название статуса в истории
+    /// </summary>
+    public string StatusName => RepairStatusNames.GetName(Status);
+}

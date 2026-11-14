@@ -47,6 +47,8 @@ public class ProPhoneServiceDbContext(DbContextOptions<ProPhoneServiceDbContext>
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasSequence<long>("repair_order_number_seq");
+
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ProPhoneServiceDbContext).Assembly);
     }
 }

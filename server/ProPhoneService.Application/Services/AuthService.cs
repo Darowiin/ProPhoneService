@@ -79,7 +79,7 @@ public class AuthService(
 
         var code = GenerateCode();
         await notifier.SendAsync(MessengerChannel.Vk, binding.RecipientId,
-            $"Ваш код подтверждения: {code}\nСрок действия кода — 5 минут. Не передавайте его третьим лицам.", ct);
+            NotificationMessages.ConfirmationCode(code), ct);
 
         if (authCode is null)
         {

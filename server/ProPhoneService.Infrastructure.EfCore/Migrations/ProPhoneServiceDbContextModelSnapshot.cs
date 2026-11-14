@@ -22,6 +22,8 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("repair_order_number_seq");
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.Account", b =>
                 {
                     b.Property<Guid>("Id")
@@ -299,6 +301,12 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("text")
                         .HasColumnName("problem_description");
 
+                    b.Property<long>("SequenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence_number")
+                        .HasDefaultValueSql("nextval('repair_order_number_seq')");
+
                     b.Property<string>("Status")
                         .HasColumnType("text")
                         .HasColumnName("status");
@@ -322,6 +330,9 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.HasIndex("DeviceId");
 
                     b.HasIndex("PreferredVisitAt");
+
+                    b.HasIndex("SequenceNumber")
+                        .IsUnique();
 
                     b.HasIndex("Status", "CreatedAt")
                         .IsDescending(false, true);

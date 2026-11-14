@@ -40,8 +40,7 @@ public class VkUpdateHandler(MessengerBindingService bindings, INotifier notifie
         }
 
         await notifier.SendAsync(MessengerChannel.Vk, senderId.ToString(CultureInfo.InvariantCulture),
-            "Мессенджер успешно привязан!\nВаш аккаунт успешно привязан к профилю на сайте.\n"
-            + "Теперь вы можете получать уведомления о состоянии ваших заявок через этот мессенджер.",
+            NotificationMessages.MessengerLinked,
             cancellationToken);
 
         await auth.RequestCodeAsync(binding.Phone, cancellationToken, binding.OrderId);

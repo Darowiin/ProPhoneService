@@ -96,7 +96,7 @@ npm run preview
 |------------------------|------------|
 | `client`               | клиенты (uuid PK, name, phone, created_at) |
 | `device`               | техника (type, manufacturer, model, serial_number) |
-| `repair_order`         | заказ на ремонт (FK client_id - null до подтверждения контакта, device_id; status, total_price, problem_description, contact_phone, preferred_visit_at, created_at) |
+| `repair_order`         | заказ на ремонт (FK client_id - null до подтверждения контакта, device_id; sequence_number, status, total_price, problem_description, contact_phone, preferred_visit_at, created_at) |
 | `repair_status_history`| история смены статусов заказа (status, changed_at, comment, changed_by - аккаунт мастера) |
 | `repair_order_service` | связка заказ↔услуга (FK repair_order_id, service_id; price) |
 | `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
@@ -127,12 +127,30 @@ server/
 Заказ создаётся фабрикой `RepairOrder.Create(...)`: до инициализации `Status == null`, `ChangeStatus` выбрасывает исключение
 
 ```
-PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready → Completed; отмена (Cancelled) из Created/Agreed/InProgress
+PendingContact → Created → InProgress → Ready → Completed
+Отмена (Cancelled): из PendingContact по сроку подтверждения, из Created/InProgress — мастером
 ```
 
 Гостевая заявка создаётся в `PendingContact` (клиента и аккаунта ещё нет, `ClientId` пуст) и активируется кодом из VK: при подтверждении создаются клиент и аккаунт, заявка привязывается и переходит в `Created`; до этого мастер её не видит
 
 Каждая смена пишет запись в `repair_status_history` одним батчем. Запрещённый переход -> 409 Conflict. Конфликт параллельных изменений (токен конкурентности `xmin`) ловится в репозитории как `ConcurrencyConflictException` и тоже отдаётся как 409
+
+### Номера заявок и названия статусов
+
+После сохранения заявка получает постоянный номер `orderNumber` вида `З-000001`. PostgreSQL выдаёт `sequence_number` через общую последовательность `repair_order_number_seq`, уникальный индекс защищает от дублей. Номер сохраняется при смене статуса и перезапуске приложения, удалённые номера повторно не используются. Пропуски после отката транзакции допустимы; после `З-999999` следует `З-1000000`. UUID `id` сохраняется для маршрутов API и связей в БД.
+
+`orderNumber` возвращается при создании заявки, в списках и детальных карточках панели мастера и ЛК. Поле `status` содержит техническое значение, `statusName` — русское название; история также возвращает `statusName`.
+
+| Статус | Название |
+|---|---|
+| `PendingContact` | Ожидает подтверждения |
+| `Created` | Заявка принята |
+| `InProgress` | В ремонте |
+| `Ready` | Готов к выдаче |
+| `Completed` | Выдан клиенту |
+| `Cancelled` | Заявка отменена |
+
+Миграция `AddOrderNumbersAndSimplifyStatuses` создаёт последовательность и поле номера. Поддержка `InDiagnostic` и `Agreed`, преобразование прежних статусов и перенос тестовых данных исключены. При локальном обновлении тестовая БД пересоздаётся с применением всех миграций с нуля.
 
 ## Эндпоинты API
 
@@ -146,7 +164,7 @@ PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready 
 | GET | `/api/me/orders?status=&page=` | Client | заказы клиента из клейма токена (новые сверху, пагинация; неподтверждённые не попадают) |
 | GET | `/api/me/orders/{id}` | Client | карточка своего заказа: устройство, услуги, стоимость, тайм-лайн; чужой - 404 |
 | GET | `/api/master/stats?period=Month\Quarter\All` | Master | статистика: завершённые ремонты по типам устройств и сумма (по моменту перехода в `Completed`) |
-| PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
+| PATCH | `/api/orders/{id}/status` | Master | смена статуса, JSON `{"status":"InProgress"}` без комментария (409 при запрещённом переходе/конфликте) |
 | POST | `/api/auth/request-code` | публично | код входа через привязку VK, JSON `{ "phone": "+7XXXXXXXXXX" } |
 | POST | `/api/auth/confirm` | публично | подтверждение кода: вход существующего аккаунта; аккаунт и клиент создаются только при подтверждении заявки, иначе 400; JWT + refresh в HttpOnly cookie |
 | POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
@@ -223,6 +241,10 @@ Content-Type: application/json
 Миграция `UseVkPhoneAuthentication` удаляет email-поля клиента и заявки, аннулирует старые email-коды и связывает новые коды с привязкой VK. Заказы, клиенты, аккаунты и их идентификаторы сохраняются. Перед обновлением существующего стенда сохранить резервную копию; удалённые email и старые коды при откате не восстанавливаются. Если у клиента без телефона сохранилась привязка VK к аккаунту, при успешном входе пустой телефон заполняется из этой привязки. Клиентам без телефона и без такой привязки нужно отдельно назначить корректный телефон для нового входа.
 
 В Development миграция применяется при старте, если `Database__MigrateOnStartup` не выключен. Для Production применить миграции отдельно перед запуском новой версии. Обновить настройки мастера и фронтенд под контракт телефона и `requiresContactConfirmation` вместо `requiresEmailConfirmation`.
+
+### Тексты сообщений
+
+Утверждённые тексты находятся в `NotificationMessages`: код подставляется в сообщение подтверждения, постоянный номер заявки — в уведомления `Created`, `InProgress`, `Ready` и ручной `Cancelled`. При `Completed`, `PendingContact` и автоматической отмене уведомление не отправляется.
 
 ### Проверки
 

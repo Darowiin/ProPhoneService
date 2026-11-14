@@ -189,6 +189,7 @@ public class CreateOrderEndpointTests
         var result = await response.Content.ReadFromJsonAsync<CreateOrderResponse>(_jsonOptions);
         Assert.NotNull(result);
         Assert.True(result.RequiresContactConfirmation);
+        Assert.Equal(harness.CreatedOrder!.OrderNumber, result.OrderNumber);
 
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(RepairStatus.PendingContact, harness.CreatedOrder.Status);

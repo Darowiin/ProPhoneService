@@ -120,6 +120,6 @@ public class OrderCreationService(
             ? await messengerBindings.CreateForOrderAsync(order.Id, MessengerChannel.Vk, cancellationToken)
             : null;
 
-        return CreateOrderResult.Success(order.Id, isGuest, link);
+        return CreateOrderResult.Success(order.Id, isGuest, link, order.OrderNumber);
     }
 }

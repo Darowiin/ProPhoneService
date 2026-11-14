@@ -99,7 +99,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
     /// </summary>
     /// <remarks>Запрещённый переход (перепрыгнуть этап или вернуть назад) возвращает 409</remarks>
     /// <param name="id">Идентификатор заказа</param>
-    /// <param name="request">Целевой статус и комментарий</param>
+    /// <param name="request">Целевой статус</param>
     [Authorize(Roles = nameof(AccountRole.Master))]
     [HttpPatch("{id:guid}/status")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -111,7 +111,7 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         [FromBody] ChangeStatusRequest request,
         CancellationToken cancellationToken = default)
     {
-        var result = await ordersService.ChangeStatusAsync(id, request.Status, request.Comment, cancellationToken);
+        var result = await ordersService.ChangeStatusAsync(id, request.Status, cancellationToken);
 
         return result switch
         {
@@ -170,6 +170,9 @@ public class OrdersController(OrderWorkflowService ordersService, OrderCreationS
         return CreatedAtAction(
             nameof(GetById),
             new { id = orderId },
-            new CreateOrderResponse(orderId, result.RequiresContactConfirmation, result.MessengerLink));
+            new CreateOrderResponse(orderId, result.RequiresContactConfirmation, result.MessengerLink)
+            {
+                OrderNumber = result.OrderNumber!,
+            });
     }
 }

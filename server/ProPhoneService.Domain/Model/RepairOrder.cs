@@ -1,4 +1,5 @@
 using ProPhoneService.Domain.Exceptions;
+using System.Globalization;
 using ProPhoneService.Domain.Shared.Enum;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -17,6 +18,18 @@ public class RepairOrder : IEntity
     [Key]
     [Column("id")]
     public required Guid Id { get; set; }
+
+    /// <summary>
+    /// Порядковый номер, однократно назначаемый базой данных
+    /// </summary>
+    [Column("sequence_number")]
+    public long SequenceNumber { get; private set; }
+
+    /// <summary>
+    /// Постоянный номер заявки для интерфейса и уведомлений
+    /// </summary>
+    [NotMapped]
+    public string OrderNumber => "З-" + SequenceNumber.ToString("D6", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Идентификатор клиента, оформившего заказ;
