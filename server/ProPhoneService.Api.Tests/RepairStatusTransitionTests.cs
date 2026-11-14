@@ -14,6 +14,7 @@ public class RepairStatusTransitionTests
     public static readonly TheoryData<RepairStatus, RepairStatus> AllowedTransitions = new()
     {
         { RepairStatus.Created, RepairStatus.InProgress },
+        { RepairStatus.Created, RepairStatus.Ready },
         { RepairStatus.Created, RepairStatus.Cancelled },
         { RepairStatus.InProgress, RepairStatus.Ready },
         { RepairStatus.InProgress, RepairStatus.Cancelled },
@@ -26,7 +27,6 @@ public class RepairStatusTransitionTests
     {
         { RepairStatus.PendingContact, RepairStatus.InProgress },
         { RepairStatus.Created, RepairStatus.PendingContact },
-        { RepairStatus.Created, RepairStatus.Ready },
         { RepairStatus.Created, RepairStatus.Completed },
         { RepairStatus.InProgress, RepairStatus.Completed },
         { RepairStatus.InProgress, RepairStatus.Created },
@@ -121,7 +121,7 @@ public class RepairStatusTransitionTests
         }
 
         Assert.Equal(
-            new[] { RepairStatus.InProgress, RepairStatus.Cancelled },
+            new[] { RepairStatus.InProgress, RepairStatus.Ready, RepairStatus.Cancelled },
             RepairStatusTransitions.GetAllowed(RepairStatus.Created));
     }
 

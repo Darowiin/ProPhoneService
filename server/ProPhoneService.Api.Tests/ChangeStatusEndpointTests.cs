@@ -249,7 +249,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "Ready", comment = "Готово" }); // перепрыг Created -> Ready запрещён
+            new { status = "Completed" }); // Выдача доступна только после Ready
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(RepairStatus.Created, order.Status);
@@ -346,5 +346,27 @@ public class ChangeStatusEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(0, store.SavedCount);
         Assert.Equal(RepairStatus.Created, order.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatus_WithoutRepair_ReadyNotifiesAndCompletionDoesNot()
+    {
+        var order = NewOrder();
+        var store = new OrderStore { Order = order };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var ready = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status = "Ready" });
+        var completed = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status = "Completed" });
+
+        Assert.Equal(HttpStatusCode.NoContent, ready.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, completed.StatusCode);
+        Assert.Equal(RepairStatus.Completed, order.Status);
+        Assert.Equal(2, store.SavedCount);
+        Assert.DoesNotContain(order.StatusHistory, entry => entry.Status == RepairStatus.InProgress);
+        Assert.Equal(1, store.NotificationCalls);
+        var log = Assert.Single(store.Logs);
+        Assert.Equal("Готов к выдаче", log.Subject);
+        Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
     }
 }

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Shared.Enum;
@@ -87,6 +88,15 @@ public class MessengerBindingPersistenceTests
         Assert.Single(await context.RepairOrders.ToListAsync());
     }
 
+    public class PostgresTheoryAttribute : TheoryAttribute
+    {
+        public PostgresTheoryAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROPHONE_TEST_POSTGRES_CONNECTION")))
+                Skip = "Set PROPHONE_TEST_POSTGRES_CONNECTION to run isolated PostgreSQL tests";
+        }
+    }
+
     public sealed class PostgresFactAttribute : FactAttribute
     {
         public PostgresFactAttribute()
@@ -98,8 +108,8 @@ public class MessengerBindingPersistenceTests
 
     internal sealed class Database(string adminConnection, string name, string connection) : IAsyncDisposable
     {
-        public ProPhoneServiceDbContext Context() => new(new DbContextOptionsBuilder<ProPhoneServiceDbContext>()
-            .UseNpgsql(connection).Options);
+        public ProPhoneServiceDbContext Context(params IInterceptor[] interceptors) => new(new DbContextOptionsBuilder<ProPhoneServiceDbContext>()
+            .UseNpgsql(connection).AddInterceptors(interceptors).Options);
 
         public static async Task<Database> CreateAsync()
         {

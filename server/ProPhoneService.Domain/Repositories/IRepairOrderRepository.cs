@@ -34,7 +34,7 @@ public interface IRepairOrderRepository : IRepository<RepairOrder>
     Task<RepairOrder?> GetForStatusChangeAsync(Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Количество завершённых ремонтов по типам устройств за период (по моменту перехода в Completed)
+    /// Количество выданных заказов по типам устройств за период (по моменту перехода в Completed)
     /// </summary>
     /// <param name="fromUtc">Начало периода (UTC, включительно) или <c>null</c> - всё время</param>
     /// <param name="toUtc">Конец периода (UTC, включительно) или <c>null</c> - без верхней границы</param>
