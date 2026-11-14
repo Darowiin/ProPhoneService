@@ -13,9 +13,4 @@ public interface IClientRepository : IRepository<Client>
     /// <remarks>Используется при создании заявки (найти-или-создать) и будет переиспользован для логина по телефону</remarks>
     Task<Client?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Найти клиента по email или <c>null</c>, если не найден
-    /// </summary>
-    /// <remarks>Заложен для будущего логина по email с кодом на почту</remarks>
-    Task<Client?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
 }

@@ -1,3 +1,5 @@
+using ProPhoneService.Application.Contracts;
+
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
@@ -15,14 +17,24 @@ public class CreateOrderResult
     public Guid? OrderId { get; private init; }
 
     /// <summary>
+    /// Постоянный номер сохранённой заявки
+    /// </summary>
+    public string? OrderNumber { get; private init; }
+
+    /// <summary>
     /// Ошибки валидации: ключ — имя поля, значение — сообщения (заполнены при неудаче)
     /// </summary>
     public IReadOnlyDictionary<string, string[]>? Errors { get; private init; }
 
     /// <summary>
-    /// Признак неподтверждённой заявки: требуется код на email, чтобы она стала активной
+    /// Признак неподтверждённой заявки: требуется код из VK, чтобы она стала активной
     /// </summary>
-    public bool RequiresEmailConfirmation { get; private init; }
+    public bool RequiresContactConfirmation { get; private init; }
+
+    /// <summary>
+    /// Ссылка для перехода в VK и срок её действия
+    /// </summary>
+    public MessengerLinkResponse? MessengerLink { get; private init; }
 
     /// <summary>
     /// Признак успешного создания
@@ -33,9 +45,9 @@ public class CreateOrderResult
     /// Успешный результат с номером заявки
     /// </summary>
     /// <param name="orderId">Номер созданной заявки</param>
-    /// <param name="requiresEmailConfirmation">Заявка ждёт подтверждения email (гостевая)</param>
-    public static CreateOrderResult Success(Guid orderId, bool requiresEmailConfirmation = false) =>
-        new() { OrderId = orderId, RequiresEmailConfirmation = requiresEmailConfirmation };
+    /// <param name="requiresContactConfirmation">Заявка ждёт подтверждения контакта (гостевая)</param>
+    public static CreateOrderResult Success(Guid orderId, bool requiresContactConfirmation = false, MessengerLinkResponse? messengerLink = null, string? orderNumber = null) =>
+        new() { OrderId = orderId, RequiresContactConfirmation = requiresContactConfirmation, MessengerLink = messengerLink, OrderNumber = orderNumber };
 
     /// <summary>
     /// Неудача с ошибками по полям

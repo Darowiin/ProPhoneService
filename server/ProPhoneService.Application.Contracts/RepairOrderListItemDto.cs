@@ -1,3 +1,4 @@
+using ProPhoneService.Domain.Shared;
 using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Application.Contracts;
@@ -17,4 +18,15 @@ public record RepairOrderListItemDto(
     DeviceDto Device,
     DateTime? PreferredVisitAt,
     DateTime CreatedAt,
-    IReadOnlyList<RepairStatusHistoryDto> StatusTimeline);
+    IReadOnlyList<RepairStatusHistoryDto> StatusTimeline)
+{
+    /// <summary>
+    /// Постоянный номер заявки
+    /// </summary>
+    public string OrderNumber { get; init; } = "";
+
+    /// <summary>
+    /// Русское название текущего статуса
+    /// </summary>
+    public string StatusName => RepairStatusNames.GetName(Status);
+}

@@ -18,14 +18,9 @@ public record CreateOrderRequest
     /// <summary>
     /// Телефон клиента в формате +7XXXXXXXXXX
     /// </summary>
+    [Required(ErrorMessage = "Укажите телефон")]
     [RegularExpression(@"^\+7\d{10}$", ErrorMessage = "Телефон должен быть в формате +7XXXXXXXXXX")]
     public string? Phone { get; init; }
-
-    /// <summary>
-    /// Email клиента (необязательно)
-    /// </summary>
-    [EmailAddress(ErrorMessage = "Некорректный email")]
-    public string? Email { get; init; }
 
     /// <summary>
     /// Тип устройства

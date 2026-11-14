@@ -13,49 +13,32 @@ public class RepairStatusTransitionTests
 
     public static readonly TheoryData<RepairStatus, RepairStatus> AllowedTransitions = new()
     {
-        { RepairStatus.Created, RepairStatus.InDiagnostic },
+        { RepairStatus.Created, RepairStatus.InProgress },
+        { RepairStatus.Created, RepairStatus.Ready },
         { RepairStatus.Created, RepairStatus.Cancelled },
-        { RepairStatus.InDiagnostic, RepairStatus.Agreed },
-        { RepairStatus.Agreed, RepairStatus.InProgress },
-        { RepairStatus.Agreed, RepairStatus.Cancelled },
         { RepairStatus.InProgress, RepairStatus.Ready },
         { RepairStatus.InProgress, RepairStatus.Cancelled },
         { RepairStatus.Ready, RepairStatus.Completed },
         { RepairStatus.PendingContact, RepairStatus.Created },
+        { RepairStatus.PendingContact, RepairStatus.Cancelled },
     };
 
     public static readonly TheoryData<RepairStatus, RepairStatus> ForbiddenTransitions = new()
     {
-        // Подтверждение контакта - единственный выход из ожидания
-        { RepairStatus.PendingContact, RepairStatus.InDiagnostic },
+        { RepairStatus.PendingContact, RepairStatus.InProgress },
         { RepairStatus.Created, RepairStatus.PendingContact },
-        // Прыжки через этапы основного потока
-        { RepairStatus.Created, RepairStatus.Agreed },
-        { RepairStatus.Created, RepairStatus.InProgress },
-        { RepairStatus.Created, RepairStatus.Ready },
         { RepairStatus.Created, RepairStatus.Completed },
-        { RepairStatus.InDiagnostic, RepairStatus.InProgress },
-        { RepairStatus.InDiagnostic, RepairStatus.Ready },
-        { RepairStatus.InDiagnostic, RepairStatus.Cancelled },
-        { RepairStatus.Agreed, RepairStatus.Ready },
-        { RepairStatus.Agreed, RepairStatus.Completed },
         { RepairStatus.InProgress, RepairStatus.Completed },
-        // Движение назад
-        { RepairStatus.InDiagnostic, RepairStatus.Created },
-        { RepairStatus.Agreed, RepairStatus.InDiagnostic },
-        { RepairStatus.InProgress, RepairStatus.Agreed },
+        { RepairStatus.InProgress, RepairStatus.Created },
         { RepairStatus.Ready, RepairStatus.InProgress },
         { RepairStatus.Completed, RepairStatus.Ready },
-        // Готовый к выдаче нельзя отменить
         { RepairStatus.Ready, RepairStatus.Cancelled },
-        // Повторный перевод в тот же статус
         { RepairStatus.Created, RepairStatus.Created },
         { RepairStatus.Ready, RepairStatus.Ready },
-        // Терминальные статусы
         { RepairStatus.Completed, RepairStatus.Created },
         { RepairStatus.Completed, RepairStatus.Cancelled },
         { RepairStatus.Cancelled, RepairStatus.Created },
-        { RepairStatus.Cancelled, RepairStatus.InDiagnostic },
+        { RepairStatus.Cancelled, RepairStatus.InProgress },
     };
 
     [Theory]
@@ -111,7 +94,7 @@ public class RepairStatusTransitionTests
     {
         var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid() };
 
-        Assert.Throws<InvalidStatusTransitionException>(() => order.ChangeStatus(RepairStatus.InDiagnostic));
+        Assert.Throws<InvalidStatusTransitionException>(() => order.ChangeStatus(RepairStatus.InProgress));
 
         Assert.Null(order.Status);
         Assert.Empty(order.StatusHistory);
@@ -138,14 +121,14 @@ public class RepairStatusTransitionTests
         }
 
         Assert.Equal(
-            new[] { RepairStatus.InDiagnostic, RepairStatus.Cancelled },
+            new[] { RepairStatus.InProgress, RepairStatus.Ready, RepairStatus.Cancelled },
             RepairStatusTransitions.GetAllowed(RepairStatus.Created));
     }
 
     [Fact]
     public void ChangeStatus_Cancelled_KeepsCommentInHistory()
     {
-        var order = CreateOrderInStatus(RepairStatus.Agreed);
+        var order = CreateOrderInStatus(RepairStatus.InProgress);
 
         order.ChangeStatus(RepairStatus.Cancelled, comment: "Клиент передумал");
 
@@ -160,7 +143,7 @@ public class RepairStatusTransitionTests
     {
         if (target == RepairStatus.PendingContact)
         {
-            return RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null, DateTime.UtcNow.AddDays(1));
+            return RepairOrder.CreatePending(Guid.NewGuid(), null, DateTime.UtcNow.AddDays(1));
         }
 
         var order = CreateStartedOrder();
@@ -168,11 +151,9 @@ public class RepairStatusTransitionTests
         var path = new Dictionary<RepairStatus, RepairStatus[]>
         {
             [RepairStatus.Created] = [],
-            [RepairStatus.InDiagnostic] = [RepairStatus.InDiagnostic],
-            [RepairStatus.Agreed] = [RepairStatus.InDiagnostic, RepairStatus.Agreed],
-            [RepairStatus.InProgress] = [RepairStatus.InDiagnostic, RepairStatus.Agreed, RepairStatus.InProgress],
-            [RepairStatus.Ready] = [RepairStatus.InDiagnostic, RepairStatus.Agreed, RepairStatus.InProgress, RepairStatus.Ready],
-            [RepairStatus.Completed] = [RepairStatus.InDiagnostic, RepairStatus.Agreed, RepairStatus.InProgress, RepairStatus.Ready, RepairStatus.Completed],
+            [RepairStatus.InProgress] = [RepairStatus.InProgress],
+            [RepairStatus.Ready] = [RepairStatus.InProgress, RepairStatus.Ready],
+            [RepairStatus.Completed] = [RepairStatus.InProgress, RepairStatus.Ready, RepairStatus.Completed],
             [RepairStatus.Cancelled] = [RepairStatus.Cancelled],
         };
 

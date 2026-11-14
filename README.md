@@ -1,190 +1,460 @@
-# ProPhoneService
+# <img src="client/static/favicon.svg" alt="" width="32" height="32"> ProPhoneService
 
-Сервис записи на ремонт телефонов: витрина, заказы на ремонт, личный кабинет клиента и панель мастера.
+Сервис записи на ремонт телефонов: витрина услуг, личный кабинет клиента и панель мастера. Бэкенд поддерживает вход по коду из VK, создание заявок, смену статусов, уведомления и статистику выдачи устройств.
 
-Модульный монорепозиторий:
+- [Технологии и структура](#технологии-и-структура)
+- [Настройка](#настройка)
+- [Запуск](#запуск)
+- [Работа с API](#работа-с-api)
+- [Заявки и уведомления](#заявки-и-уведомления)
+- [Проверки](#проверки)
+- [Тестовый стенд](#тестовый-стенд)
+- [Архитектура и данные](#архитектура-и-данные)
 
-```
+## Технологии и структура
+
+| Компонент | Технологии |
+|-----------|------------|
+| Фронтенд | Svelte 5, SvelteKit, TypeScript, Vite |
+| Бэкенд | ASP.NET Core 10, Entity Framework Core 10, Npgsql |
+| База данных | PostgreSQL 17 |
+| Проверки | xUnit, Moq, ESLint, svelte-check |
+| CI | GitHub Actions |
+
+```text
 .
-├── client/   # фронтенд (Svelte + TypeScript, Vite) - пока только конфиг и линтер
-├── server/   # бэкенд ASP.NET Core Web API + xUnit-тесты
-├── docs/     # продуктовая документация, ERD
-├── .github/  # CI (GitHub Actions)
-├── docker-compose.yml  # PostgreSQL + API
-└── .env.example        # шаблон переменных окружения
+├── client/              # Фронтенд
+├── server/              # Бэкенд, миграции и тесты
+├── docs/                # Продуктовая документация и схема БД
+├── .github/workflows/   # Проверки CI
+├── docker-compose.yml   # PostgreSQL и API
+└── .env.example         # Шаблон настроек Docker Compose
 ```
 
-## Стек
+Для запуска API и БД в контейнерах нужны Docker и Docker Compose v2 с поддержкой `--wait`.
 
-| Слой     | Технологии |
-|----------|------------|
-| Фронт    | Svelte 5 + TypeScript, Vite, ESLint |
-| Бэк      | ASP.NET Core (Web API), EF Core 10 + Npgsql, xUnit |
-| БД       | PostgreSQL 17 (схема ниже, миграции EF Core) |
-| CI       | GitHub Actions |
+Для запуска бэкенда без Docker нужен .NET SDK 10.
+
+Для фронтенда нужны Node.js 22.17+ из ветки 22 и npm; в CI используется Node.js 22.
+
+Команды ниже выполняются из корня репозитория. В локальных примерах используются команды, доступные в PowerShell и Bash; команды обслуживания VM приведены для Bash.
+
+## Настройка
+
+### Переменные окружения
+
+При первом запуске создать корневой `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Перед запуском заполнить настройки. При обновлении существующий `.env` сохраняется.
+
+| Параметр в `.env` | Переменная контейнера API | Назначение |
+|------------------|--------------------------|------------|
+| `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | Окружение; по умолчанию `Development` |
+| `DATABASE_MIGRATE_ON_STARTUP` | `Database__MigrateOnStartup` | Применение миграций при запуске; по умолчанию `true` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `ConnectionStrings__Default` | Пользователь, пароль и имя БД; Compose собирает строку подключения с `Host=db` |
+| `JWT_KEY` | `Jwt__Key` | Ключ подписи JWT, не менее 32 байт UTF-8 |
+| `VK_GROUP_ID` | `Messengers__Vk__GroupId` | Положительный числовой ID сообщества |
+| `VK_GROUP_TOKEN` | `Messengers__Vk__Token` | Токен сообщества |
+| `VK_API_VERSION` | `Messengers__Vk__ApiVersion` | Версия VK API; по умолчанию `5.199` |
+| `MASTER_PHONE` | `Auth__MasterPhone` | Телефон мастера в формате `+7XXXXXXXXXX`; необязательно |
+| `MASTER_VK_USER_ID` | `Auth__MasterVkUserId` | Доверенный ID пользователя VK для мастера; задаётся вместе с телефоном |
+
+Корневой `.env` читает Docker Compose. При запуске API без Docker используются переменные из второго столбца или соответствующие секции `appsettings.Development.json`. Например, `Messengers__Vk__Token` соответствует `Messengers:Vk:Token`.
+
+Вне `Development` обязательны строка подключения, ключ JWT и настройки VK. В `Development` без ключа JWT используется ключ для разработки, а без настроек VK API запускается с отключённым Long Poll; доставка сообщений недоступна.
+
+`.env` и `appsettings.Development.json` исключены из Git. Локальные файлы `.env`, `appsettings.Development.json` и `appsettings.Local.json` также исключены из контекста сборки Docker. Секреты VK задаются только на бэкенде.
+
+### Сообщество VK
+
+Единственный канал уведомлений - сообщения сообщества VK.
+
+API получает события через Bots Long Poll API; контейнеру нужен исходящий HTTPS-доступ к VK API и серверу Long Poll. Входящий webhook для VK не требуется.
+
+1. В управлении сообществом включить сообщения и разрешить пользователям писать сообществу.
+2. В разделе «Работа с API» создать ключ сообщества с правами, необходимыми для `messages.send` и `groups.getLongPollServer`.
+3. Включить Long Poll API и событие входящего сообщения `message_new`. Версия API должна соответствовать `VK_API_VERSION`.
+4. Записать ID, токен сообщества и версию API в `.env` или локальную конфигурацию бэкенда.
+
+После запуска API в журнале должно появиться сообщение «VK Long Poll запущен». Одно сообщество должен опрашивать один экземпляр API. Callback API, его секрет и строка подтверждения не используются.
+
+### Аккаунт мастера
+
+Задать вместе `MASTER_PHONE` и `MASTER_VK_USER_ID`. При запуске API создаются недостающие клиент и аккаунт, назначается роль `Master` и сохраняется привязка к доверенному VK ID. Мастер должен разрешить сообщения сообщества.
+
+Если оба параметра не заданы, создание мастера пропускается. Телефон без доверенного VK ID или VK ID без телефона не допускаются. Существующая привязка телефона к другому пользователю VK останавливает запуск API: нужно проверить настройки и данные привязки.
+
+Для входа мастера используются те же запросы `/api/auth/request-code` и `/api/auth/confirm`, что и для клиента. Создание гостевой заявки с телефоном мастера не даёт доступ к его аккаунту.
+
+### Миграции
+
+`DATABASE_MIGRATE_ON_STARTUP=true` в Docker Compose включает применение миграций до запуска HTTP API в любом выбранном окружении. Значение `false` отключает их. В логи выводятся начало и завершение применения миграций либо сообщение об отключении; при ошибке HTTP API не запускается.
+
+Без Docker используется настройка `Database__MigrateOnStartup`. Если она отсутствует, автоматическое применение миграций включено только в `Development`. Если оно отключено, схему нужно обновить отдельно перед запуском новой версии.
 
 ## Запуск
 
-### Через Docker (PostgreSQL + API)
+### API и PostgreSQL в Docker
+
+После заполнения `.env` выполнить:
 
 ```bash
-cp .env.example .env        # при необходимости поправить пароль
-docker compose up --build   # БД на 5432, API на 8080
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 180
+docker compose ps
 ```
 
-API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
+| Компонент | Локальный адрес |
+|-----------|-----------------|
+| API | `http://localhost:8080` |
+| Проверка API | `http://localhost:8080/health` |
+| PostgreSQL | `localhost:5432` |
 
-### Backend без Docker
-
-Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
-
-`MASTER_EMAIL` (env `Auth__MasterEmail`) - email мастера: при старте ему апсертится клиент и аккаунт с ролью Master, вход по коду на этот адрес; пусто - мастер не заводится
-
-Письма через Resend: `RESEND_API_KEY` + `EMAIL_FROM` (`onboarding@resend.dev` на демо, `noreply@<домен>` после покупки домена); SMTP-параметры по умолчанию `smtp.resend.com`/`465`/`resend`, при смене провайдера переопределяются env `EMAIL_HOST`/`EMAIL_PORT`/`EMAIL_USER`/`EMAIL_PASSWORD`. Вне Development эти настройки обязательны, в Development без них коды пишутся в лог
-
-### Backend без Docker
+Проверить ответ API и журнал:
 
 ```bash
-cd server
-dotnet restore
-dotnet build
-dotnet test
-dotnet run --project ProPhoneService.Api
+docker compose exec -T api curl --fail http://127.0.0.1:8080/health
+docker compose logs --tail=100 api
 ```
 
-Connection string для локального запуска - в `server/ProPhoneService.Api/appsettings.Development.json` (в `.gitignore`):
+Ожидаемый ответ `/health` - `Healthy`. Проверка подтверждает работу HTTP API; БД и доставка VK проверяются отдельно. Healthcheck контейнера использует установленный в образе `curl`.
+
+Контейнеры API и БД используют `restart: unless-stopped`: Docker перезапускает завершившиеся процессы и поднимает контейнеры после своего запуска, кроме остановленных вручную. Статус `unhealthy` сам по себе не вызывает перезапуск. Подробнее - в [документации Docker Compose](https://docs.docker.com/reference/compose-file/services/).
+
+### Бэкенд без Docker
+
+Сначала запустить PostgreSQL. Если используется БД из Docker Compose:
+
+```bash
+docker compose up -d --wait --wait-timeout 60 db
+```
+
+Создать локальный файл конфигурации:
 
 ```bash
 cp server/ProPhoneService.Api/appsettings.Development.json.example server/ProPhoneService.Api/appsettings.Development.json
 ```
 
-Пароль в example совпадает с дефолтом из `.env.example`, так что с `docker compose up db` заработает сразу, БД при этом всё равно нужна
+В `ConnectionStrings:Default` указать `Host=localhost`, порт 5432 и учётные данные из корневого `.env`. При значениях из шаблонов строка подключения уже соответствует БД. Добавить настройки VK, JWT и при необходимости мастера в локальную конфигурацию или переменные окружения согласно таблице выше.
 
-Health-check: `GET /health` → `Healthy`.
-
-### Frontend
+Восстановить зависимости и запустить API на том же порту 8080, который использует прокси фронтенда:
 
 ```bash
-cd client
-npm ci
-npm run dev
+dotnet restore server/ProPhoneService.Server.slnx
+dotnet run --project server/ProPhoneService.Api --no-launch-profile -- --environment Development --urls http://localhost:8080
 ```
 
-Open `http://localhost:5173/`. Without `client/.env`, the frontend uses deterministic mock data.
+Если запускать стандартный профиль `ProPhoneService.Api` из Visual Studio, используются другие адреса: `http://localhost:60796` и `https://localhost:60795`. В этом случае изменить `VITE_API_PROXY_TARGET` на нужный адрес API.
 
-To connect the backend, copy `client/.env.example` to `client/.env` and run any branch backend on port 8080. Vite proxies `/api` there, so local development does not require CORS.
+### Фронтенд
+
+Для работы с запущенным API создать `client/.env`, установить зависимости и запустить Vite:
 
 ```bash
-cd client
-copy .env.example .env   # Windows PowerShell; use cp on POSIX
-npm run dev
+cp client/.env.example client/.env
+npm --prefix client ci
+npm --prefix client run dev
 ```
 
-For production hosting, serve the built static frontend (`npm run build` → `client/build`) and proxy `/api` to the backend on the same origin.
+Сайт доступен по адресу `http://localhost:5173`. Настройки фронтенда:
+
+| Параметр | Значение | Назначение |
+|----------|----------|------------|
+| `VITE_API_URL` | `/api` | Относительный префикс запросов к API |
+| `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Адрес бэкенда для прокси Vite |
+
+Прокси сохраняет префикс `/api`; при таком подключении отдельная настройка CORS не требуется. Без `client/.env`, если `VITE_API_URL` не задан и другим способом, фронтенд использует тестовые данные. После изменения `.env` перезапустить Vite.
+
+Интерфейс ещё использует прежние контракты email и статусов. Сценарий заявки с телефоном и VK пока проверяется через API или Postman; доступность `/api` сама по себе не означает, что этот сценарий подключён к формам.
+
+Для сборки и локального просмотра:
 
 ```bash
-npm run lint
-npm run check
-npm run build
-npm run preview
+npm --prefix client run build
+npm --prefix client run preview
 ```
 
-## Схема БД
+Для размещения сайта отдавать содержимое `client/build` через веб-сервер, направлять маршруты интерфейса на `index.html`, а `/api` - на бэкенд с сохранением префикса. `VITE_API_URL` встраивается при сборке: после его изменения фронтенд нужно пересобрать. Адрес назначения nginx задаётся в его конфигурации, а не через `VITE_API_PROXY_TARGET`.
 
-Полная ERD: [`docs/ErdDiagram.png`](docs/ErdDiagram.png)
+## Работа с API
 
-| Таблица                | Назначение |
-|------------------------|------------|
-| `client`               | клиенты (uuid PK, name, phone, email, created_at) |
-| `device`               | техника (type, manufacturer, model, serial_number) |
-| `repair_order`         | заказ на ремонт (FK client_id - null до подтверждения email, device_id; status, total_price, problem_description, contact_email/contact_phone, preferred_visit_at, created_at) |
-| `repair_status_history`| история смены статусов заказа (status, changed_at, comment, changed_by - аккаунт мастера) |
-| `repair_order_service` | связка заказ↔услуга (FK repair_order_id, service_id; price) |
-| `service`              | прайс-лист услуг (name, description, price, is_active, updated_at, updated_by) |
-| `account`              | аккаунт входа (FK client_id 1:1; role - Client/Master, created_at) |
-| `auth_code`            | одноразовые коды входа на email (code, expires_at, failed_attempts, locked_until) |
-| `notification_log`     | лог уведомлений (FK repair_order_id; recipient, subject, message, status, attempts, created_at) |
+JSON-запросы отправляются с `Content-Type: application/json`. Защищённые методы принимают `Authorization: Bearer <accessToken>`, а обновление сессии использует HttpOnly cookie `refresh_token`.
 
-## Архитектура server
+### Создание заявки и вход
 
+1. Отправить `POST /api/orders`: обязательны `name`, `phone` в формате `+7XXXXXXXXXX`, `deviceType`, `deviceManufacturer`, `deviceModel` и `preferredVisitAt` с часовым поясом. `serviceIds` может быть пустым, `problemDescription` необязателен и ограничен 2000 символами. Время визита должно соответствовать настройкам работы мастерской.
+2. Гостевая заявка получает статус `PendingContact`. Ответ `201` содержит `id`, `orderNumber`, `requiresContactConfirmation: true` и `messengerLink` с полями `channel`, `url`, `expiresAtUtc`.
+3. Открыть `messengerLink.url`, начать диалог и отправить сообщение сообществу до истечения срока ссылки. VK должен передать `ref` в событии `message_new`; одно открытие страницы не завершает привязку.
+4. После привязки получить в VK сообщение об успехе и шестизначный код. Подтвердить код запросом:
+
+```http
+POST /api/auth/confirm
+Content-Type: application/json
+
+{
+  "phone": "+79001234567",
+  "code": "123456"
+}
 ```
+
+При успехе API возвращает `200`, access-токен в JSON и refresh-токен в HttpOnly cookie. Клиент и аккаунт создаются или находятся по телефону; заполненное имя сохраняется, пустое заполняется именем из заявки. Привязка VK переносится на аккаунт, заявка переходит в `Created`, код погашается в одной транзакции. Другие заявки с тем же телефоном автоматически не активируются.
+
+Заявка авторизованного клиента сразу создаётся в `Created`, без ссылки VK и повторного подтверждения. Для повторного входа или запроса нового кода используется `POST /api/auth/request-code` с JSON `{"phone":"+79001234567"}`. Новый аккаунт без подтверждаемой заявки не создаётся.
+
+| Ограничение | Поведение |
+|-------------|-----------|
+| Срок действия кода | 5 минут с момента генерации |
+| Срок подтверждения заявки | 5 минут с момента создания; повторный код не продлевает срок |
+| Повторный запрос кода | Не чаще раза в 60 секунд; раньше - `429` |
+| Неверный код | После 5 неверных попыток контакт блокируется на 15 минут |
+| Нет привязки VK при запросе кода | `400` |
+| Не удалось доставить код | `503`; новый код и интервал повторного запроса не сохраняются |
+
+Каждые 15 секунд фоновая проверка отменяет просроченные неподтверждённые заявки, в том числе после закрытия браузера или перезапуска API. Статус и история сохраняются атомарно, уведомление об автоматической отмене не отправляется. Подтверждение после срока отклоняется сразу, без ожидания фоновой проверки.
+
+`POST /api/auth/refresh` погашает текущий refresh-токен и возвращает новую пару токенов. Повторное использование погашенного токена возвращает `401`. Профиль доступен через `GET /api/me`: `id`, `name`, `phone`, `vkLinked`.
+
+### Привязка VK
+
+Ссылка для гостевой заявки уже возвращается при создании. При необходимости получить новую ссылку через `POST /api/messengers/orders/{orderId}/link`; для текущего аккаунта используется `POST /api/messengers/me/link` с JWT. Оба запроса принимают JSON `{}` или `{"channel":"Vk"}`. Телефон берётся из заявки или профиля, выбор канала отсутствует.
+
+Ответ содержит `channel`, `url`, `expiresAtUtc`. Ссылка имеет вид `https://vk.me/club{groupId}?ref={token}` и содержит одноразовый секрет; её нельзя публиковать или логировать. Для гостевой заявки ссылка доступна только в `PendingContact` и истекает не позднее 5 минут после создания заявки. Лимит выдачи ссылок через эти методы - 10 запросов в минуту на IP.
+
+Обработчик принимает только личные сообщения нужного сообщества, где положительные `from_id` и `peer_id` совпадают. Хэши секретов и получатели сохраняются в `messenger_binding`. Другой отправитель не может погасить использованную ссылку; новая гостевая заявка не позволяет заменить существующего получателя телефона. Привязки неподдерживаемых каналов не участвуют в поиске и доставке.
+
+### Маршруты
+
+«Аккаунт» означает авторизованного пользователя; роль `Master` даёт доступ к панели мастера. Неподтверждённые заявки скрыты от списков и просмотра, недоступная или чужая заявка возвращает `404`.
+
+| Метод | Путь | Доступ | Назначение |
+|-------|------|--------|------------|
+| `GET` | `/health` | Публичный | Проверка HTTP API |
+| `GET` | `/api/services` | Публичный | Активные услуги; кеш на 5 минут |
+| `POST` | `/api/services` | `Master` | Создание услуги |
+| `PUT` | `/api/services/{id}` | `Master` | Изменение услуги |
+| `DELETE` | `/api/services/{id}` | `Master` | Скрытие услуги через `is_active=false` |
+| `POST` | `/api/auth/request-code` | Публичный | Запрос кода в VK |
+| `POST` | `/api/auth/confirm` | Публичный | Подтверждение кода и выдача токенов |
+| `POST` | `/api/auth/refresh` | Cookie `refresh_token` | Обновление сессии |
+| `POST` | `/api/orders` | Публичный | Создание заявки; JWT необязателен |
+| `GET` | `/api/orders` | `Master` | Список заявок мастерской |
+| `GET` | `/api/orders/{id}` | Владелец или `Master` | Заявка с устройством, услугами и историей |
+| `PATCH` | `/api/orders/{id}/status` | `Master` | Смена статуса |
+| `GET` | `/api/me` | Аккаунт | Профиль и состояние привязки VK |
+| `GET` | `/api/me/orders` | Аккаунт | Список собственных заявок |
+| `GET` | `/api/me/orders/{id}` | Аккаунт | Собственная заявка |
+| `POST` | `/api/messengers/orders/{orderId}/link` | Публичный | Ссылка VK для неподтверждённой заявки |
+| `POST` | `/api/messengers/me/link` | Аккаунт | Ссылка VK для текущего аккаунта |
+| `GET` | `/api/master/stats` | `Master` | Статистика выдачи устройств |
+
+Списки заявок принимают `status` и `page` (нумерация с 1). `/api/orders` дополнительно принимает `visitFrom` и `visitTo`. Для статистики доступен параметр `period`: `Month` (по умолчанию), `Quarter` или `All`.
+
+## Заявки и уведомления
+
+### Статусы и номера
+
+| Статус | Название |
+|--------|----------|
+| `PendingContact` | Ожидает подтверждения |
+| `Created` | Заявка принята |
+| `InProgress` | В ремонте |
+| `Ready` | Готов к выдаче |
+| `Completed` | Выдан клиенту |
+| `Cancelled` | Заявка отменена |
+
+```text
+После ремонта:       PendingContact → Created → InProgress → Ready → Completed
+Выдача без ремонта:  Created → Ready → Completed
+Автоматическая отмена: PendingContact → Cancelled
+Отмена мастером:     Created / InProgress → Cancelled
+```
+
+Мастер устанавливает `Completed` после фактической выдачи устройства. Прямой переход `Created → Completed` запрещён. Статус меняется только через `RepairOrder.ChangeStatus()`, правила заданы в `RepairStatusTransitions`. Каждое изменение записывается в `repair_status_history`.
+
+Пример запроса мастера:
+
+```http
+PATCH /api/orders/{id}/status
+Content-Type: application/json
+Authorization: Bearer <accessToken>
+
+{
+  "status": "InProgress"
+}
+```
+
+Успешная смена возвращает `204`, запрещённый переход или конфликт параллельных изменений - `409`. Комментарии мастера в запросе и публичной истории не используются.
+
+После сохранения заявка получает постоянный `orderNumber` вида `З-000001`. PostgreSQL выдаёт `sequence_number` через последовательность `repair_order_number_seq`, уникальный индекс защищает от дублей. Удалённые номера не переиспользуются; пропуски после отката транзакции допустимы. После `З-999999` следует `З-1000000`. UUID `id` используется в маршрутах и связях БД.
+
+`orderNumber` возвращается при создании, в списках и детальных ответах. Поле `status` содержит техническое значение, `statusName` - русское название; история также возвращает `statusName`.
+
+### Статистика выдачи
+
+Дата выдачи - `changedAt` записи истории со статусом `Completed`. Учитываются выдача после ремонта и без ремонта, сохранённая сумма `TotalPrice` и заказы с нулевой суммой. Незавершённые и отменённые заявки исключены.
+
+Период определяется датой выдачи, а не создания заявки. Границы месяца и квартала рассчитываются в UTC; начало периода и текущий момент включены. Будущие даты выдачи исключаются, в том числе для периода `All`.
+
+### Доставка уведомлений
+
+Сообщения о статусе отправляются после сохранения изменений:
+
+| Событие | Уведомление |
+|---------|-------------|
+| Подтверждение гостевой заявки или создание авторизованным клиентом | «Заявка принята» |
+| Переход в `InProgress` | «В ремонте» |
+| Переход в `Ready` | «Готов к выдаче» |
+| Отмена подтверждённой заявки мастером | «Заявка отменена» |
+| Переход в `Completed` или автоматическая отмена | Не отправляется |
+
+Повторный вход и подтверждение уже погашенного кода не отправляют уведомление о принятии повторно. Получатель определяется по привязке VK аккаунта владельца; произвольный контактный телефон заявки на маршрутизацию не влияет. Тексты заданы в `NotificationMessages`, в уведомления подставляется постоянный номер заявки.
+
+`notification_log` хранит канал `Vk`, фактический VK ID, заголовок, текст, результат `Sent` или `Failed` и число попыток. Без привязки сохраняется `Failed` с пустым получателем и нулём попыток. Для выдачи и автоматической отмены запись доставки не создаётся.
+
+По умолчанию выполняются до трёх попыток отправки (`Notifications:MaxAttempts`), задержка начинается с 1 секунды и растёт вдвое (`Notifications:RetryDelay`). Повторы выполняются в текущем запросе; очереди повторной доставки после перезапуска нет. Ошибки доставки и журнала не откатывают сохранённую заявку или статус. Отмена запроса прекращает отправку и повторы.
+
+При недоступности VK для операций привязки и запроса кода API возвращает `503` с `offlineOrderAvailable: true` и предложением оформить заявку в мастерской. Для статусных уведомлений сбой фиксируется отдельно от результата изменения заявки.
+
+Long Poll обрабатывает события последовательно. Позиция `ts` продвигается после успешной обработки пачки; при ошибке повторяется текущее событие, уже обработанные элементы пропускаются. `failed=1` обновляет позицию, `failed=2` - ключ с сохранением позиции, `failed=3` открывает новую сессию. После ошибки транспорта повторный запрос выполняется через 5 секунд.
+
+Сессия и текущая пачка хранятся в памяти, поэтому события за время простоя не гарантированы. Если привязка не завершилась, получить свежую ссылку и повторить действие. Повторное событие может повторно отправить подтверждающее сообщение. В журнал выводятся этап и тип ошибки, безопасный код и стек вызовов; токены, ключи Long Poll и содержимое сообщений не выводятся.
+
+## Проверки
+
+### Автоматические проверки
+
+Бэкенд:
+
+```bash
+dotnet restore server/ProPhoneService.Server.slnx
+dotnet build server/ProPhoneService.Server.slnx --no-restore
+dotnet test server/ProPhoneService.Server.slnx --no-build
+```
+
+Тесты используют HTTP-моки и не обращаются к реальному VK. Для тестов хранения нужна переменная `PROPHONE_TEST_POSTGRES_CONNECTION` с подключением к PostgreSQL и правом создания и удаления БД. Без неё эти тесты отмечаются пропущенными.
+
+Пример для PowerShell:
+
+```powershell
+$env:PROPHONE_TEST_POSTGRES_CONNECTION = "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=<пароль>"
+dotnet test server/ProPhoneService.Server.slnx --no-build
+```
+
+Каждый такой тест создаёт и удаляет отдельную БД `messenger_test_*`; рабочие таблицы не изменяются.
+
+Фронтенд:
+
+```bash
+npm --prefix client ci
+npm --prefix client run lint
+npm --prefix client run check
+npm --prefix client run build
+```
+
+GitHub Actions выполняет восстановление зависимостей, сборку и тесты бэкенда, а для фронтенда - установку зависимостей и ESLint. PostgreSQL в текущем CI не настроен, поэтому тесты, требующие указанного подключения, пропускаются.
+
+### Ручная проверка
+
+Через Postman создать свежую заявку, открыть ссылку VK, получить и подтвердить код. Проверить access-токен, профиль `/api/me` и заявку в `/api/me/orders`. Под аккаунтом мастера пройти статусы до `Completed` и проверить уведомления по таблице выше. Повторить привязку после перезапуска API и временного отключения сети.
+
+Полный вход и обновление сессии в браузере проверяются после подключения интерфейса к актуальным контрактам телефона и VK.
+
+## Тестовый стенд
+
+На текущей VM API и PostgreSQL работают через Docker Compose, фронтенд доступен через nginx. Для браузера используется адрес сайта и относительный префикс `/api`.
+
+| Назначение | Адрес |
+|------------|-------|
+| Сайт | `http://5.164.142.108:4173` |
+| API через адрес сайта | `http://5.164.142.108:4173/api` |
+| Прямой доступ к API | `http://5.164.142.108:18080` |
+| Проверка API | `http://5.164.142.108:18080/health` |
+
+Внешний порт 18080 направлен на порт API 8080 внутри VM. На стенде используется `VITE_API_URL=/api`; nginx сохраняет этот префикс при передаче запросов бэкенду. HTML сайта и JSON `/api/services` доступны извне. Браузерная проверка входа и обновления сессии остаётся отдельным шагом.
+
+### Обновление API
+
+На VM из каталога репозитория выполнить:
+
+```bash
+cd ~/ProPhoneService
+git pull --ff-only
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 180
+docker compose ps
+docker compose logs --tail=100 api
+curl --fail http://127.0.0.1:8080/health
+```
+
+Для текущего стенда сохранить `ASPNETCORE_ENVIRONMENT=Development` и `DATABASE_MIGRATE_ON_STARTUP=true`. Новые значения `.env` применяются через `docker compose up`; `restart` их не перечитывает. Снаружи проверить `/health` по прямому адресу API и `/api/services` по адресу сайта: ожидаются `Healthy` и JSON прайс-листа.
+
+### Перезапуск и сохранность данных
+
+На VM сравнить количество записей до и после перезапуска, затем открыть существующую заявку через API:
+
+```bash
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS orders FROM repair_order; SELECT count(*) AS clients FROM client;"'
+
+docker compose restart db api
+docker compose up -d --wait --wait-timeout 180
+docker compose ps
+curl --fail http://127.0.0.1:8080/health
+
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS orders FROM repair_order; SELECT count(*) AS clients FROM client;"'
+```
+
+PostgreSQL сохраняет данные в именованном volume `pgdata`. Команда `docker compose down` сохраняет его, а `docker compose down -v` удаляет. Логи обоих компонентов доступны через `docker compose logs -f api db`.
+
+### Обновление схемы БД
+
+Перед обновлением существующей БД сохранить резервную копию. Изменения схемы:
+
+| Миграция | Изменение |
+|----------|-----------|
+| `UseVkPhoneAuthentication` | Удаляет email-поля клиента и заявки, аннулирует старые коды, связывает новые коды с привязкой VK |
+| `AddOrderNumbersAndSimplifyStatuses` | Создаёт последовательность номеров, поле `sequence_number` и уникальный индекс |
+| `AddNotificationChannel` | Добавляет канал доставки в `notification_log` |
+
+Поддержки `InDiagnostic` и `Agreed`, преобразования прежних статусов и переноса старых тестовых данных нет. Локальную тестовую БД с такими статусами пересоздать и применить миграции с нуля. Откат миграции не восстанавливает удалённые email и старые коды.
+
+Если у клиента без телефона есть привязка VK к аккаунту, при успешном входе пустой телефон заполняется из неё. Клиентам без телефона и такой привязки нужно отдельно назначить корректный телефон для входа.
+
+## Архитектура и данные
+
+```text
 server/
-├── ProPhoneService.Domain.Shared/        # enum-ы, машина состояний, WorkshopOptions (без зависимостей)
-├── ProPhoneService.Domain/               # сущности, интерфейсы IRepository, доменные исключения, VisitTimeValidator
-├── ProPhoneService.Infrastructure.EfCore/ # DbContext, конфигурации, миграции, реализации репозиториев, аудит
-├── ProPhoneService.Application.Contracts/ # DTO-контракты
-├── ProPhoneService.Application/          # сервисы (просмотр заявок, создание заявки, изменение статуса заявки, прайс-лист), маппинг Mapster
-├── ProPhoneService.Api/                  # контроллеры, DI
-└── ProPhoneService.Api.Tests/            # xUnit
+├── ProPhoneService.Domain.Shared/         # Перечисления, статусы и настройки
+├── ProPhoneService.Domain/                # Сущности, репозитории и доменные правила
+├── ProPhoneService.Application.Contracts/ # Контракты API и доставки сообщений
+├── ProPhoneService.Application/           # Прикладные сервисы и маппинг Mapster
+├── ProPhoneService.Infrastructure.EfCore/ # PostgreSQL, миграции, репозитории и VK
+├── ProPhoneService.Api/                   # Контроллеры, авторизация и DI
+└── ProPhoneService.Api.Tests/             # Модульные и интеграционные тесты
 ```
 
-Слои направлены внутрь: `Api` -> `Application` -> `Domain`, Репозитории - generic `IRepository<T>` + специализированные, scoped lifetime, batch-сохранение через `SaveChangesAsync`
+Контроллеры вызывают прикладные сервисы, которые работают с доменными сущностями и интерфейсами репозиториев. Реализации хранения и доставки подключаются через DI. Изменения сохраняются через `SaveChangesAsync`.
 
-Аудит "кто/когда" - `AuditInterceptor`: проставляет `CreatedAt`/`ChangedAt`/`UpdatedAt` из `TimeProvider` и аккаунт из токена (`changed_by`/`updated_by`) в том же батче, без отдельной таблицы; аккаунт запроса даёт `ICurrentActor` (реализация в API читает клейм `sub`)
+`AuditInterceptor` заполняет даты из `TimeProvider` и автора изменения из `ICurrentActor`, который читает аккаунт из JWT. Аудит хранится в полях сущностей и истории статусов. Для защиты от параллельных изменений используется `xmin`; конфликт возвращается как `409`.
 
-## Машина состояний заказа
+### Таблицы БД
 
-Смена статуса - только через `RepairOrder.ChangeStatus()`, карта переходов - `RepairStatusTransitions` в `Domain.Shared`
-Заказ создаётся фабрикой `RepairOrder.Create(...)`: до инициализации `Status == null`, `ChangeStatus` выбрасывает исключение
+| Таблица | Назначение |
+|---------|------------|
+| `client` | Имя, телефон и дата создания клиента |
+| `account` | Аккаунт клиента и роль `Client` или `Master` |
+| `device` | Тип, производитель, модель и серийный номер устройства |
+| `repair_order` | Заявка, номер, статус, контакты, время визита и стоимость; `client_id` пуст до подтверждения |
+| `repair_order_service` | Услуги заявки и сохранённые цены |
+| `repair_status_history` | История статусов, время и автор изменения |
+| `service` | Прайс-лист, активность услуги и аудит изменений |
+| `auth_code` | Код для телефона, привязка VK, срок действия и ограничения попыток |
+| `messenger_binding` | Привязка VK к заявке или аккаунту, хэш секрета и получатель |
+| `notification_log` | Получатель, содержание, результат и попытки доставки уведомления |
 
-```
-PendingContact → Created → InDiagnostic → Agreed → InProgress → Ready → Completed; отмена (Cancelled) из Created/Agreed/InProgress
-```
+Схема связей: [ERD](docs/ErdDiagram.png).
 
-Гостевая заявка создаётся в `PendingContact` (клиента и аккаунта ещё нет, `ClientId` пуст) и активируется кодом на свой email: при подтверждении создаются клиент и аккаунт, заявка привязывается и переходит в `Created`; до этого мастер её не видит
-
-Каждая смена пишет запись в `repair_status_history` одним батчем. Запрещённый переход -> 409 Conflict. Конфликт параллельных изменений (токен конкурентности `xmin`) ловится в репозитории как `ConcurrencyConflictException` и тоже отдаётся как 409
-
-## Эндпоинты API
-
-| Метод | Путь | Доступ | Описание |
-|-------|------|--------|----------|
-| GET | `/api/services` | публично | прайс-лист активных услуг (HybridCache, 5 мин) |
-| POST/PUT/DELETE | `/api/services...` | Master | правка прайса (скрытие - `is_active=false`) |
-| GET | `/api/orders?status=&visitFrom=&visitTo=&page=` | Master | страница заявок панели мастера (фильтр по статусу и желаемой дате визита, пагинация; неподтверждённые не видны) |
-| GET | `/api/orders/{id}` | Client (свой) / Master | карточка заказа: клиент, устройство, услуги, тайм-лайн статусов; чужой или неподтверждённый заказ - 404 |
-| POST | `/api/orders` | публично | создание заявки: без токена - `PendingContact` + код на email, с токеном - сразу `Created`; описание проблемы до 2000 символов; 201 + номер |
-| GET | `/api/me/orders?status=&page=` | Client | заказы клиента из клейма токена (новые сверху, пагинация; неподтверждённые не попадают) |
-| GET | `/api/me/orders/{id}` | Client | карточка своего заказа: устройство, услуги, стоимость, тайм-лайн; чужой - 404 |
-| GET | `/api/master/stats?period=Month\Quarter\All` | Master | статистика: завершённые ремонты по типам устройств и сумма (по моменту перехода в `Completed`) |
-| PATCH | `/api/orders/{id}/status` | Master | смена статуса по машине состояний (409 при запрещённом переходе/конфликте) |
-| POST | `/api/auth/request-code` | публично | код входа на email (INotifier, демо - лог; единственный канал в спринте 2) |
-| POST | `/api/auth/confirm` | публично | подтверждение кода: вход существующего аккаунта; аккаунт и клиент создаются только при подтверждении заявки, иначе 400; JWT + refresh в HttpOnly cookie |
-| POST | `/api/auth/refresh` | cookie | ротация refresh-токена (погашенный старый отклоняется) |
-
-## Уведомления (email)
-
-Отправка сообщений идёт через `INotifier`; реализация выбирается по настройкам секции `Email`:
-
-- **Resend SMTP** (`SmtpEmailNotifier`, MailKit) - когда заданы `Email__Password` (API-ключ) и `Email__FromAddress`; хост/порт/пользователь по умолчанию `smtp.resend.com` / `465` / `resend` (465 - неявный TLS, 587/2465/2587 - STARTTLS)
-- **лог-заглушка** (`LoggingNotifier`) - когда провайдер не настроен и окружение Development; вне Development приложение не стартует без настроек
-
-На демо домен не нужен: Resend разрешает отправителя `onboarding@resend.dev`, но письма уходят **только на email владельца ключа** - на демонстрации получатель один (свой ящик). Полноценная отправка клиентам появляется после подтверждения домена в Resend: добавляются DNS-записи (MX/TXT/DKIM), меняется `EMAIL_FROM`. `Email__UseTls=false` - только для локального SMTP без шифрования (MailHog)
-
-Отзывы в базе не хранятся: на витрине показываются отзывы, спарсенные с Яндекс Карт (внешний источник)
-
-Смена статуса заказа отправляет клиенту письмо (после успешного сохранения): получатель - `contact_email` заявки или email клиента. Сбой провайдера PATCH не ломает - 3 попытки с backoff (`Notifications:MaxAttempts`, `Notifications:RetryDelay`, базовая пауза удваивается), результат пишется в `notification_log` (кому, когда, по какому заказу, `Sent`/`Failed`, число попыток)
-
-## Статистика
-
-`GET /api/master/stats?period=` считает только завершённые ремонты: дата события - момент перехода заказа в `Completed` (`repair_status_history.changed_at`), период отсчитывается с начала месяца (`Month`, по умолчанию), с начала квартала (`Quarter`) или без нижней границы (`All`)
-
-## Роли и доступ
-
-В access-токене есть клеймы `sub` (аккаунт), `client_id` и `role` (`Client`/`Master`)
-
-- **Client** - личный кабинет (`/api/me/orders`) и только собственные заказы: фильтр по `client_id` из клейма, чужой идентификатор неотличим от несуществующего (404), чтобы не раскрывать данные
-- Отдельной регистрации нет: аккаунт создаётся только при подтверждении email заявки (`POST /api/orders` → код → `POST /api/auth/confirm`); дальше это обычный вход по коду, а для неизвестного email без заявки `confirm` отдаёт 400 «Аккаунт не найден»
-- **Master** - панель заказов, смена статусов и правка прайса; публичный прайс читается без токена
-- Мастер-аккаунт: апсерт при старте по `Auth__MasterEmail` (роль Master, вход по коду из лога `INotifier` в демо)
-- Без токена защищённый эндпоинт - 401, с токеном без нужной роли - 403
-- Поля аудита "кто изменил" (`repair_status_history.changed_by`, `service.updated_by`) заполняет `AuditInterceptor` из `sub` текущего запроса
-
-Ошибки валидации возвращаются как `ValidationProblemDetails` со списком полей; при создании заявки обязательно должен быть телефон или почта, дата визита проверяется на рабочие часы и "не в прошлом"
-
-## CI
-
-`.github/workflows/ci.yml` - конфигурация CI/CD, запускается на каждый push:
-
-- **backend**: `dotnet restore` → `build` → `test`
-- **client**: `npm ci` → `lint`
+Протоколы VK: [Bots Long Poll API](https://dev.vk.com/ru/api/bots-long-poll/getting-started), [схема messages](https://github.com/VKCOM/vk-api-schema/tree/master/messages), [схема groups](https://github.com/VKCOM/vk-api-schema/tree/master/groups).

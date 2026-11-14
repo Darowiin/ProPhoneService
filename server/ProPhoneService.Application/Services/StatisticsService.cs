@@ -5,12 +5,12 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Статистика дашборда мастера: завершённые ремонты за период (месяц, квартал, всё время)
+/// Статистика дашборда мастера: выданные заказы за период (месяц, квартал, всё время)
 /// </summary>
 public class StatisticsService(IRepairOrderRepository orderRepository, TimeProvider timeProvider)
 {
     /// <summary>
-    /// Получить статистику завершённых ремонтов за период
+    /// Получить статистику выданных заказов за период
     /// </summary>
     /// <param name="period">Период: с начала месяца, с начала квартала или всё время</param>
     public async Task<StatsDto> GetAsync(StatsPeriod period, CancellationToken cancellationToken = default)

@@ -3,13 +3,13 @@ using System.ComponentModel.DataAnnotations;
 namespace ProPhoneService.Application.Contracts;
 
 /// <summary>
-/// Запрос одноразового кода на email (единственный канал подтверждения в этом спринте)
+/// Запрос одноразового кода через привязку VK
 /// </summary>
 public record RequestCodeRequest
 {
     /// <summary>
-    /// Email для получения кода
+    /// Телефон, связанный с получателем VK
     /// </summary>
-    [Required(ErrorMessage = "Укажите email")]
-    public string Email { get; init; } = "";
+    [Required(ErrorMessage = "Укажите телефон")]
+    public string Phone { get; init; } = "";
 }

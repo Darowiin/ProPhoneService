@@ -2,20 +2,21 @@ using Microsoft.AspNetCore.Mvc;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Shared;
+using ProPhoneService.Domain.Exceptions;
 
 namespace ProPhoneService.Api.Controllers;
 
 /// <summary>
-/// Вход по коду из email: запрос кода на почту, подтверждение, ротация refresh-токена
+/// Вход по коду из телефон: запрос кода через VK, подтверждение, ротация refresh-токена
 /// </summary>
 [ApiController]
 [Route("api/auth")]
 public class AuthController(AuthService authService, AuthOptions authOptions) : ControllerBase
 {
     /// <summary>
-    /// Запросить одноразовый код на email
+    /// Запросить одноразовый код через VK
     /// </summary>
-    /// <param name="request">Email для получения кода</param>
+    /// <param name="request">Телефон для получения кода</param>
     [HttpPost("request-code")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -24,16 +25,16 @@ public class AuthController(AuthService authService, AuthOptions authOptions) : 
         [FromBody] RequestCodeRequest request,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await authService.RequestCodeAsync(request.Email, cancellationToken);
+        var outcome = await authService.RequestCodeAsync(request.Phone, cancellationToken);
 
         return MapOutcome(outcome);
     }
 
     /// <summary>
-    /// Подтвердить email кодом: верный код - создаются аккаунт и клиент (если email ещё нет),
+    /// Подтвердить телефон кодом: верный код - создаются аккаунт и клиент (если аккаунта ещё нет),
     /// выдаются access и refresh-токены (refresh - HttpOnly cookie)
     /// </summary>
-    /// <param name="request">Email и код</param>
+    /// <param name="request">Телефон и код</param>
     [HttpPost("confirm")]
     [ProducesResponseType<AuthResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
@@ -42,9 +43,19 @@ public class AuthController(AuthService authService, AuthOptions authOptions) : 
         [FromBody] ConfirmAuthRequest request,
         CancellationToken cancellationToken = default)
     {
-        var outcome = await authService.ConfirmAsync(request.Email, request.Code, cancellationToken);
-
-        return HandleSession(outcome);
+        try
+        {
+            var outcome = await authService.ConfirmAsync(request.Phone, request.Code, cancellationToken);
+            return HandleSession(outcome);
+        }
+        catch (ConcurrencyConflictException)
+        {
+            return Conflict(new ProblemDetails
+            {
+                Title = "Заявка была изменена",
+                Detail = "Обновите данные заявки и проверьте срок подтверждения",
+            });
+        }
     }
 
     /// <summary>

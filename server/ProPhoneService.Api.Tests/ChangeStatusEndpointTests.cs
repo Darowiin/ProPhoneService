@@ -21,6 +21,8 @@ public class ChangeStatusEndpointTests
 
         public bool ThrowConcurrency { get; init; }
 
+        public bool HasBinding { get; init; } = true;
+
         /// <summary>
         /// Сколько первых вызовов провайдера завершатся ошибкой (проверка повторов)
         /// </summary>
@@ -61,14 +63,24 @@ public class ChangeStatusEndpointTests
                             return 1;
                         });
 
+                    var bindings = new Mock<IMessengerBindingRepository>();
+                    bindings.Setup(x => x.GetByClientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(() => HasBinding ? new MessengerBinding
+                        {
+                            Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
+                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = DateTime.UtcNow,
+                        } : null);
+                    services.RemoveAll<IMessengerBindingRepository>();
+                    services.AddSingleton(bindings.Object);
+
                     var notifier = new Mock<INotifier>();
                     notifier
                         .Setup(n => n.SendAsync(
-                            It.IsAny<string>(),
+                            It.IsAny<MessengerChannel>(),
                             It.IsAny<string>(),
                             It.IsAny<string>(),
                             It.IsAny<CancellationToken>()))
-                        .Returns((string _, string _, string _, CancellationToken _) =>
+                        .Returns((MessengerChannel _, string _, string _, CancellationToken _) =>
                         {
                             NotificationCalls++;
                             return NotificationCalls <= NotificationFailures
@@ -99,7 +111,7 @@ public class ChangeStatusEndpointTests
     [Fact]
     public async Task ChangeStatus_PendingOrder_Returns404WithoutChanges()
     {
-        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), null);
         var store = new OrderStore { Order = pending };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -119,17 +131,18 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_ValidTransition_Returns204AndWritesHistory()
     {
         var order = NewOrder();
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Взяли в диагностику" });
+            new { status = "InProgress", comment = "Взяли в диагностику" });
 
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
-        var entry = Assert.Single(order.StatusHistory, h => h.Status == RepairStatus.InDiagnostic);
-        Assert.Equal("Взяли в диагностику", entry.Comment);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
+        var entry = Assert.Single(order.StatusHistory, h => h.Status == RepairStatus.InProgress);
+        Assert.Null(entry.Comment);
         Assert.Equal(1, store.SavedCount);
     }
 
@@ -137,44 +150,45 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_Success_SendsNotificationAndWritesSentLog()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Взяли в диагностику" });
+            new { status = "InProgress", comment = "Взяли в диагностику" });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(1, store.NotificationCalls);
 
         var log = Assert.Single(store.Logs);
         Assert.Equal(order.Id, log.RepairOrderId);
-        Assert.Equal("client@example.com", log.Recipient);
+        Assert.Equal("42", log.Recipient);
+        Assert.Equal(MessengerChannel.Vk, log.Channel);
         Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
         Assert.Equal(1, log.Attempts);
-        Assert.Contains("InDiagnostic", log.Message);
-        Assert.Contains("Взяли в диагностику", log.Message);
-        Assert.Equal($"Статус заказа: {RepairStatus.InDiagnostic}", log.Subject);
+        Assert.Contains("В ремонте", log.Message);
+        Assert.DoesNotContain("Взяли в диагностику", log.Message);
+        Assert.Equal("В ремонте", log.Subject);
     }
 
     [Fact]
     public async Task ChangeStatus_ProviderUnavailable_RetriesThreeTimesAndKeepsStatusChange()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order, NotificationFailures = int.MaxValue };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         // Сбой провайдера не ломает PATCH: смена статуса применена
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
         Assert.Equal(3, store.NotificationCalls);
 
         var log = Assert.Single(store.Logs);
@@ -186,14 +200,14 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_ProviderRecoversOnThirdAttempt_LogsSent()
     {
         var order = NewOrder();
-        order.ContactEmail = "client@example.com";
+        order.ContactPhone = "+79001234567";
         var store = new OrderStore { Order = order, NotificationFailures = 2 };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(3, store.NotificationCalls);
@@ -204,20 +218,25 @@ public class ChangeStatusEndpointTests
     }
 
     [Fact]
-    public async Task ChangeStatus_NoRecipient_SkipsNotificationAndKeepsStatusChange()
+    public async Task ChangeStatus_NoBinding_LogsFailedWithoutProviderCallAndKeepsStatusChange()
     {
         var order = NewOrder();
-        var store = new OrderStore { Order = order };
+        order.ContactPhone = null;
+        var store = new OrderStore { Order = order, HasBinding = false };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(0, store.NotificationCalls);
-        Assert.Empty(store.Logs);
+        var log = Assert.Single(store.Logs);
+        Assert.Equal(MessengerChannel.Vk, log.Channel);
+        Assert.Null(log.Recipient);
+        Assert.Equal(0, log.Attempts);
+        Assert.Equal(NotificationDeliveryStatus.Failed, log.Status);
     }
 
     [Fact]
@@ -230,7 +249,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "Ready", comment = "Готово" }); // перепрыг Created -> Ready запрещён
+            new { status = "Completed" }); // Выдача доступна только после Ready
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(RepairStatus.Created, order.Status);
@@ -241,7 +260,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_BackwardTransition_Returns409()
     {
         var order = NewOrder();
-        order.ChangeStatus(RepairStatus.InDiagnostic);
+        order.ChangeStatus(RepairStatus.InProgress);
         var store = new OrderStore { Order = order };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -251,7 +270,7 @@ public class ChangeStatusEndpointTests
             new { status = "Created", comment = (string?)null }); // назад тоже нельзя
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        Assert.Equal(RepairStatus.InDiagnostic, order.Status);
+        Assert.Equal(RepairStatus.InProgress, order.Status);
         Assert.Equal(0, store.SavedCount);
     }
 
@@ -264,7 +283,7 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{Guid.NewGuid()}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal(0, store.SavedCount);
@@ -274,7 +293,7 @@ public class ChangeStatusEndpointTests
     public async Task ChangeStatus_TerminalStatus_Returns409()
     {
         var order = NewOrder();
-        foreach (var next in new[] { RepairStatus.InDiagnostic, RepairStatus.Agreed, RepairStatus.InProgress })
+        foreach (var next in new[] { RepairStatus.InProgress })
         {
             order.ChangeStatus(next);
         }
@@ -291,7 +310,7 @@ public class ChangeStatusEndpointTests
 
         response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = "Воскрешение" });
+            new { status = "InProgress", comment = "Воскрешение" });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(RepairStatus.Cancelled, order.Status);
@@ -307,8 +326,47 @@ public class ChangeStatusEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic", comment = (string?)null });
+            new { status = "InProgress", comment = (string?)null });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("InDiagnostic")]
+    [InlineData("Agreed")]
+    public async Task RemovedStatus_IsRejectedByApi(string status)
+    {
+        var order = NewOrder();
+        var store = new OrderStore { Order = order };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var response = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, store.SavedCount);
+        Assert.Equal(RepairStatus.Created, order.Status);
+    }
+
+    [Fact]
+    public async Task ChangeStatus_WithoutRepair_ReadyNotifiesAndCompletionDoesNot()
+    {
+        var order = NewOrder();
+        var store = new OrderStore { Order = order };
+        using var factory = store.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
+
+        var ready = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status = "Ready" });
+        var completed = await client.PatchAsJsonAsync($"/api/orders/{order.Id}/status", new { status = "Completed" });
+
+        Assert.Equal(HttpStatusCode.NoContent, ready.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, completed.StatusCode);
+        Assert.Equal(RepairStatus.Completed, order.Status);
+        Assert.Equal(2, store.SavedCount);
+        Assert.DoesNotContain(order.StatusHistory, entry => entry.Status == RepairStatus.InProgress);
+        Assert.Equal(1, store.NotificationCalls);
+        var log = Assert.Single(store.Logs);
+        Assert.Equal("Готов к выдаче", log.Subject);
+        Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
     }
 }

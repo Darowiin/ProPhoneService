@@ -6,19 +6,9 @@ namespace ProPhoneService.Domain.Shared.Enum;
 public enum RepairStatus
 {
     /// <summary>
-    /// Заказ создан, ожидает диагностики
+    /// Заявка принята в обработку
     /// </summary>
     Created,
-
-    /// <summary>
-    /// Диагностика устройства в работе, стоимость и объём работ ещё не определены
-    /// </summary>
-    InDiagnostic,
-
-    /// <summary>
-    /// Стоимость и объём работ согласованы с клиентом
-    /// </summary>
-    Agreed,
 
     /// <summary>
     /// Ремонт в работе
@@ -26,7 +16,7 @@ public enum RepairStatus
     InProgress,
 
     /// <summary>
-    /// Ремонт завершён, устройство готово к выдаче
+    /// Устройство готово к выдаче после ремонта или без ремонта
     /// </summary>
     Ready,
 
@@ -41,7 +31,7 @@ public enum RepairStatus
     Cancelled,
 
     /// <summary>
-    /// Заявка оставлена без входа: ждёт подтверждения email, клиент и аккаунт ещё не созданы
+    /// Заявка оставлена без входа: ждёт подтверждения контакта, клиент и аккаунт ещё не созданы
     /// </summary>
-    PendingContact
+    PendingContact,
 }

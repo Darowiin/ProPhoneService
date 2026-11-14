@@ -26,17 +26,6 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyList<RepairOrder>> GetPendingByEmailAsync(
-        string contactEmail,
-        CancellationToken cancellationToken = default)
-    {
-        // Без AsNoTracking: после подтверждения кодом заявки привязываются к клиенту
-        return await Set
-            .Where(x => x.Status == RepairStatus.PendingContact && x.ContactEmail == contactEmail)
-            .ToListAsync(cancellationToken);
-    }
-
-    /// <inheritdoc />
     public async Task<IReadOnlyList<RepairOrder>> GetPageByClientIdAsync(
         Guid clientId,
         RepairStatus? status,
@@ -130,5 +119,22 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
             .Skip(skip)
             .Take(take)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task<int> CancelExpiredPendingAsync(DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        var cutoff = nowUtc.AddMinutes(-5);
+
+        // Условное обновление и история атомарны; xmin защищает параллельное подтверждение
+        return Context.Database.ExecuteSqlInterpolatedAsync($"""
+            WITH cancelled AS (
+                UPDATE repair_order SET status = 'Cancelled'
+                WHERE status = 'PendingContact' AND created_at <= {cutoff}
+                RETURNING id
+            )
+            INSERT INTO repair_status_history (id, repair_order_id, status, changed_at, changed_by, comment)
+            SELECT gen_random_uuid(), id, 'Cancelled', {nowUtc}, NULL, NULL FROM cancelled
+            """, cancellationToken);
     }
 }

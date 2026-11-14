@@ -1,3 +1,5 @@
+using ProPhoneService.Domain.Model;
+
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
@@ -14,9 +16,15 @@ public sealed record AuthOutcome(
     string? ErrorDetail)
 {
     /// <summary>
+    /// Активированная заявка для уведомления после фиксации транзакции
+    /// </summary>
+    internal RepairOrder? ActivatedOrder { get; init; }
+
+    /// <summary>
     /// Успешный исход с сессией
     /// </summary>
-    public static AuthOutcome Success(AuthTokens tokens) => new(tokens, 200, null, null);
+    public static AuthOutcome Success(AuthTokens tokens, RepairOrder? activatedOrder = null) =>
+        new(tokens, 200, null, null) { ActivatedOrder = activatedOrder };
 
     /// <summary>
     /// Успешный исход без создаваемых данных (204)

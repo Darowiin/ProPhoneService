@@ -8,67 +8,83 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Уведомление клиента о смене статуса заказа: повторы с backoff при сбое провайдера
-/// и запись в <c>notification_log</c> (кому, когда, по какому заказу, статус доставки)
+/// Доставка уведомлений о сохранённых статусах через VK с повторами и журналом результата
 /// </summary>
 public class StatusNotificationService(
     INotifier notifier,
     IRepository<NotificationLog> notificationRepository,
     NotificationOptions notificationOptions,
-    ILogger<StatusNotificationService> logger)
+    ILogger<StatusNotificationService> logger,
+    IMessengerBindingRepository bindings)
 {
     /// <summary>
-    /// Отправить клиенту уведомление о текущем статусе заказа
+    /// Уведомить владельца заявки после сохранения изменений, не откатывая их при сбое доставки
     /// </summary>
-    /// <remarks>Получатель - email заявки или клиента; без получателя уведомление не создаётся</remarks>
-    public async Task NotifyStatusChangedAsync(
-        RepairOrder order,
-        CancellationToken cancellationToken = default)
+    public async Task NotifyStatusChangedAsync(RepairOrder order, CancellationToken cancellationToken = default)
     {
-        var recipient = FirstNonEmpty(order.ContactEmail, order.Client?.Email);
-        if (recipient is null)
+        try
         {
-            logger.LogWarning("Заказ {OrderId}: нет email для уведомления о смене статуса", order.Id);
+            await NotifyCoreAsync(order, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Ошибка журнала или поиска получателя не отменяет уже сохранённую заявку
+            logger.LogError("Заказ {OrderId}: уведомление не обработано, тип ошибки {ErrorType}",
+                order.Id, ex.GetType().Name);
+        }
+    }
+
+    private async Task NotifyCoreAsync(RepairOrder order, CancellationToken cancellationToken)
+    {
+        var notification = NotificationMessages.Status(order.Status, order.OrderNumber);
+        if (notification is null || (order.Status == RepairStatus.Cancelled && order.ClientId is null))
+        {
             return;
         }
 
-        var subject = $"Статус заказа: {order.Status}";
-        var message = BuildMessage(order);
-        var maxAttempts = Math.Max(1, notificationOptions.MaxAttempts);
+        // Источник получателя - аккаунт владельца, произвольный телефон из формы не используется
+        var binding = order.ClientId is { } clientId
+            ? await bindings.GetByClientIdAsync(clientId, cancellationToken)
+            : null;
+        var recipient = binding?.Channel == MessengerChannel.Vk && binding.LinkedAt is not null
+            ? binding.RecipientId : null;
+        var (subject, message) = notification.Value;
         var attempts = 0;
         var status = NotificationDeliveryStatus.Failed;
+        var maxAttempts = Math.Max(1, notificationOptions.MaxAttempts);
 
-        while (attempts < maxAttempts)
+        if (!string.IsNullOrWhiteSpace(recipient))
         {
-            attempts++;
+            while (attempts < maxAttempts)
+            {
+                attempts++;
 
-            try
-            {
-                await notifier.SendAsync(recipient, subject, message, cancellationToken);
-                status = NotificationDeliveryStatus.Sent;
-                break;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception exception)
-            {
-                logger.LogWarning(
-                    exception,
-                    "Заказ {OrderId}: попытка {Attempt} из {MaxAttempts} не удалась ({Recipient})",
-                    order.Id,
-                    attempts,
-                    maxAttempts,
-                    recipient);
-
-                if (attempts < maxAttempts)
+                try
                 {
-                    // Backoff: пауза удваивается с каждой следующей попыткой
-                    var delayMilliseconds = notificationOptions.RetryDelay.TotalMilliseconds * Math.Pow(2, attempts - 1);
-                    if (delayMilliseconds > 0)
+                    await notifier.SendAsync(MessengerChannel.Vk, recipient, message, cancellationToken);
+                    status = NotificationDeliveryStatus.Sent;
+                    break;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning("Заказ {OrderId}: попытка VK {Attempt} из {MaxAttempts}, ошибка {ErrorType}",
+                        order.Id, attempts, maxAttempts, ex.GetType().Name);
+
+                    if (attempts < maxAttempts)
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(delayMilliseconds), cancellationToken);
+                        var delay = notificationOptions.RetryDelay.TotalMilliseconds * Math.Pow(2, attempts - 1);
+                        if (delay > 0)
+                        {
+                            await Task.Delay(TimeSpan.FromMilliseconds(delay), cancellationToken);
+                        }
                     }
                 }
             }
@@ -78,36 +94,18 @@ public class StatusNotificationService(
         {
             Id = Guid.NewGuid(),
             RepairOrderId = order.Id,
+            Channel = MessengerChannel.Vk,
             Recipient = recipient,
             Subject = subject,
             Message = message,
             Status = status,
             Attempts = attempts,
         }, cancellationToken);
-
         await notificationRepository.SaveChangesAsync(cancellationToken);
 
         if (status == NotificationDeliveryStatus.Failed)
         {
-            logger.LogError(
-                "Заказ {OrderId}: уведомление не доставлено после {Attempts} попыток ({Recipient})",
-                order.Id,
-                attempts,
-                recipient);
+            logger.LogWarning("Заказ {OrderId}: уведомление VK не доставлено, попыток {Attempts}", order.Id, attempts);
         }
-    }
-
-    private static string BuildMessage(RepairOrder order)
-    {
-        var comment = order.StatusHistory.Count > 0 ? order.StatusHistory[^1].Comment : null;
-
-        return string.IsNullOrWhiteSpace(comment)
-            ? $"Заказ {order.Id}: новый статус - {order.Status}"
-            : $"Заказ {order.Id}: новый статус - {order.Status}. Комментарий: {comment}";
-    }
-
-    private static string? FirstNonEmpty(params string?[] values)
-    {
-        return values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
     }
 }

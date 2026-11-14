@@ -1,26 +1,105 @@
 using System.Net;
+using Microsoft.AspNetCore.TestHost;
+using ProPhoneService.Infrastructure.EfCore.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using static ProPhoneService.Api.Tests.MessengerBindingPersistenceTests;
 
 namespace ProPhoneService.Api.Tests;
 
-/// <summary>
-/// Поведение Program.cs на старте: вне Development строка подключения обязательна,
-/// в Development она может отсутствовать (endpoint-тесты), миграция пропускается
-/// </summary>
 public class ProgramStartupTests
 {
+    private static WebApplicationFactory<Program> Factory(string environment, Action<IWebHostBuilder>? configure = null) =>
+        new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+        {
+            host.UseSetting(WebHostDefaults.EnvironmentKey, environment);
+            host.UseSetting("ConnectionStrings:Default", "Host=unused");
+            host.UseSetting("Database:MigrateOnStartup", "false");
+            host.UseSetting("Auth:MasterPhone", "");
+            host.UseSetting("Jwt:Key", new string('p', 48));
+            host.UseSetting("Messengers:Vk:Token", "vk-test-token");
+            host.UseSetting("Messengers:Vk:GroupId", "123");
+            host.ConfigureTestServices(services =>
+            {
+                var polling = services.Single(x => x.ImplementationType == typeof(VkLongPollService));
+                services.Remove(polling);
+
+                var expiration = services.Single(x => x.ImplementationType == typeof(PendingOrderExpirationService));
+                services.Remove(expiration);
+            });
+            configure?.Invoke(host);
+        });
+
+    [Fact]
+    public void Startup_ProductionWithoutConnectionString_FailsFast()
+    {
+        using var factory = Factory("Production", host => host.UseSetting("ConnectionStrings:Default", ""));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        Assert.Contains("Строка подключения", exception.Message);
+    }
+
+    [Fact]
+    public async Task Startup_ProductionWithMessengers_Starts()
+    {
+        using var factory = Factory("Production");
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [PostgresTheory]
+    [InlineData("Development", true)]
+    [InlineData("Development", false)]
+    [InlineData("Production", true)]
+    [InlineData("Production", false)]
+    public async Task Startup_MigrationsFollowExplicitSetting(string environment, bool migrateOnStartup)
+    {
+        await using var database = await Database.CreateAsync(migrate: false);
+        await using var context = database.Context();
+        using var factory = Factory(environment, host =>
+        {
+            host.UseSetting("ConnectionStrings:Default", context.Database.GetConnectionString());
+            host.UseSetting("Database:MigrateOnStartup", migrateOnStartup.ToString());
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var applied = await context.Database.GetAppliedMigrationsAsync();
+        if (migrateOnStartup)
+        {
+            Assert.NotEmpty(applied);
+            Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+        }
+        else
+        {
+            Assert.Empty(applied);
+        }
+    }
+
+    [Theory]
+    [InlineData("Vk")]
+    public void Startup_ProductionWithoutMessengerSettings_FailsFast(string channel)
+    {
+        using var factory = Factory("Production", host => host.UseSetting($"Messengers:{channel}:Token", ""));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        Assert.Contains("Messengers", exception.Message);
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
     public async Task Startup_DevelopmentWithBlankJwtKey_UsesFallback(string key)
     {
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
-        {
-            host.UseSetting(WebHostDefaults.EnvironmentKey, "Development");
-            host.UseSetting("Database:MigrateOnStartup", "false");
-            host.UseSetting("Jwt:Key", key);
-        });
+        using var factory = Factory("Development", host => host.UseSetting("Jwt:Key", key));
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/health");
@@ -31,96 +110,25 @@ public class ProgramStartupTests
     [Fact]
     public void Startup_ShortJwtKey_FailsBeforeServingRequests()
     {
-        using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
-            host.UseSetting("Jwt:Key", new string('x', 31)));
+        using var factory = Factory("Development", host => host.UseSetting("Jwt:Key", new string('x', 31)));
 
         var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
 
         Assert.Contains("32", exception.Message);
     }
 
-    private const string ConnectionStringEnvKey = "ConnectionStrings__Default";
-
     [Fact]
-    public void Startup_ProductionWithoutConnectionString_FailsFast()
+    public async Task Startup_DevelopmentWithoutConnectionStringAndMessengers_Starts()
     {
-        Environment.SetEnvironmentVariable(ConnectionStringEnvKey, null);
-
-        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
-            host.UseSetting(WebHostDefaults.EnvironmentKey, "Production"));
-
-        var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
-
-        Assert.Contains("Строка подключения", exception.Message);
-    }
-
-    [Fact]
-    public async Task Startup_DevelopmentWithoutConnectionString_StartsAndSkipsMigrate()
-    {
-        Environment.SetEnvironmentVariable(ConnectionStringEnvKey, "");
-        try
+        using var factory = Factory("Development", host =>
         {
-            using var client = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(host =>
-                    host.UseSetting(WebHostDefaults.EnvironmentKey, "Development"))
-                .CreateClient();
+            host.UseSetting("ConnectionStrings:Default", "");
+            host.UseSetting("Messengers:Vk:Token", "");
+        });
+        using var client = factory.CreateClient();
 
-            var response = await client.GetAsync("/health");
+        var response = await client.GetAsync("/health");
 
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(ConnectionStringEnvKey, null);
-        }
-    }
-
-    [Fact]
-    public async Task Startup_ProductionWithConnectionStringAndJwtKey_Starts()
-    {
-        Environment.SetEnvironmentVariable(ConnectionStringEnvKey, "Host=x");
-        Environment.SetEnvironmentVariable("Jwt__Key", new string('p', 48));
-        Environment.SetEnvironmentVariable("Email__Password", "test-api-key");
-        Environment.SetEnvironmentVariable("Email__FromAddress", "sender@example.com");
-        try
-        {
-            using var client = new WebApplicationFactory<Program>()
-                .WithWebHostBuilder(host =>
-                    host.UseSetting(WebHostDefaults.EnvironmentKey, "Production"))
-                .CreateClient();
-
-            var response = await client.GetAsync("/health");
-
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(ConnectionStringEnvKey, null);
-            Environment.SetEnvironmentVariable("Jwt__Key", null);
-            Environment.SetEnvironmentVariable("Email__Password", null);
-            Environment.SetEnvironmentVariable("Email__FromAddress", null);
-        }
-    }
-
-    [Fact]
-    public void Startup_ProductionWithoutEmailSettings_FailsFast()
-    {
-        Environment.SetEnvironmentVariable(ConnectionStringEnvKey, "Host=x");
-        Environment.SetEnvironmentVariable("Jwt__Key", new string('p', 48));
-        Environment.SetEnvironmentVariable("Email__Password", null);
-        try
-        {
-            var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
-                host.UseSetting(WebHostDefaults.EnvironmentKey, "Production"));
-
-            var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
-
-            Assert.Contains("Email", exception.Message);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(ConnectionStringEnvKey, null);
-            Environment.SetEnvironmentVariable("Jwt__Key", null);
-        }
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

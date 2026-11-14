@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -17,18 +18,26 @@ services:
 
   api:
     build: ./server
+    restart: unless-stopped
     environment:
       ConnectionStrings__Default: Host=db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY}
-      Auth__MasterEmail: ${MASTER_EMAIL}
-      Email__Host: ${EMAIL_HOST:-smtp.resend.com}
-      Email__Port: ${EMAIL_PORT:-465}
-      Email__User: ${EMAIL_USER:-resend}
-      Email__Password: ${EMAIL_PASSWORD:-${RESEND_API_KEY:-}}
-      Email__FromAddress: ${EMAIL_FROM:-onboarding@resend.dev}
-      ASPNETCORE_ENVIRONMENT: Development
+      Auth__MasterPhone: ${MASTER_PHONE:-}
+      Auth__MasterVkUserId: ${MASTER_VK_USER_ID:-0}
+      Messengers__Vk__GroupId: ${VK_GROUP_ID:-0}
+      Messengers__Vk__Token: ${VK_GROUP_TOKEN:-}
+      Messengers__Vk__ApiVersion: ${VK_API_VERSION:-5.199}
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_HTTP_PORTS: "8080"
+      Database__MigrateOnStartup: ${DATABASE_MIGRATE_ON_STARTUP:-true}
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "3", "http://127.0.0.1:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
