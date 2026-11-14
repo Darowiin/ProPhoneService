@@ -27,19 +27,31 @@
 
 ### Через Docker (PostgreSQL + API)
 
+При первом запуске скопировать `.env.example` в `.env` и заполнить пароль БД, ключ JWT и настройки VK. Существующий `.env` при обновлении сохраняется.
+
 ```bash
-cp .env.example .env        # при необходимости поправить пароль
-docker compose up --build   # БД на 5432, API на 8080
+cp .env.example .env
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 180
+docker compose ps
 ```
 
-API применяет миграции при старте в режиме разработки (`Database.Migrate()`), Connection string передаётся через env `ConnectionStrings__Default`
+PostgreSQL доступен на порту 5432, API — на 8080. Docker Compose подставляет значения из корневого `.env` в переменные контейнеров:
 
-### Backend без Docker
+| Параметр в `.env` | Переменная API | Значение по умолчанию |
+|------------------|----------------|----------------------|
+| `ASPNETCORE_ENVIRONMENT` | `ASPNETCORE_ENVIRONMENT` | `Development` |
+| `DATABASE_MIGRATE_ON_STARTUP` | `Database__MigrateOnStartup` | `true` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | `ConnectionStrings__Default` | Из `.env` |
+| `JWT_KEY` | `Jwt__Key` | Из `.env`, не менее 32 байт UTF-8 |
 
-Вне Development обязателен `Jwt__Key` (ключ подписи JWT, 32+ символа) - иначе приложение останавливается при старте; в Development при отсутствии используется dev-ключ
+`DATABASE_MIGRATE_ON_STARTUP=true` применяет миграции до запуска HTTP API в любом выбранном окружении; `false` отключает автоматическое применение. Начало и завершение миграций либо их отключение выводятся в логи. При ошибке миграции API не начинает принимать запросы. Без Docker используется `Database__MigrateOnStartup`; если настройка отсутствует, автомиграции включены только в Development.
+
+Healthcheck контейнера API вызывает `GET /health` через `curl`, который установлен в образе. Ответ `Healthy` проверяет работу HTTP API; доступность БД и VK проверяется отдельно. Оба контейнера используют `restart: unless-stopped`: Docker перезапускает их после завершения процесса и запуска Docker, кроме контейнеров, остановленных вручную. Статус `unhealthy` сам по себе не запускает перезапуск. [Описание параметров Compose](https://docs.docker.com/reference/compose-file/services/).
+
+Вне Development обязателен `Jwt__Key`; в Development при его отсутствии используется dev-ключ. Секреты передаются через окружение; локальные `appsettings.Development.json`, `appsettings.Local.json` и `.env` исключены из контекста сборки образа.
 
 Для мастер-аккаунта задать `MASTER_PHONE` и `MASTER_VK_USER_ID` (вне Docker — `Auth__MasterPhone` и `Auth__MasterVkUserId`). Телефон — в формате `+7XXXXXXXXXX`, VK ID — положительный числовой ID доверенного пользователя. При старте создаются клиент, роль Master и привязка к указанному VK. Мастер должен разрешить сообщения сообщества. Без обоих значений мастер не создаётся; неизвестному VK нельзя получить роль Master, указав телефон в гостевой заявке. Старый `MASTER_EMAIL` больше не используется.
-
 
 ### Backend без Docker
 
@@ -87,6 +99,41 @@ npm run check
 npm run build
 npm run preview
 ```
+
+### Обновление и проверка тестового стенда
+
+На текущей VM API и PostgreSQL запускаются через Docker Compose, фронтенд доступен на внешнем порту 4173. Проброс внешнего порта 18080 ведёт на порт API 8080 внутри VM. Для браузера используется адрес сайта `http://5.164.142.108:4173` и относительные запросы `/api` через существующий прокси.
+
+В `client/.env` должно быть `VITE_API_URL=/api`. Значение встраивается при сборке, поэтому после его изменения фронтенд нужно пересобрать. `VITE_API_PROXY_TARGET=http://localhost:8080` настраивает прокси Vite при разработке; для размещённого сайта `/api` направляет nginx, сохраняя этот префикс. При одном origin отдельная настройка CORS не требуется.
+
+Обновить API из каталога репозитория на VM:
+
+```bash
+cd ~/ProPhoneService
+git pull --ff-only
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 180
+docker compose ps
+docker compose logs --tail=100 api
+curl --fail http://127.0.0.1:8080/health
+```
+
+После добавления параметров запуска в существующий `.env` сохранить `ASPNETCORE_ENVIRONMENT=Development` и `DATABASE_MIGRATE_ON_STARTUP=true` для текущего стенда. Изменения переменных применяются через `docker compose up`, обычный `restart` их не перечитывает. Снаружи проверить `http://5.164.142.108:18080/health` и `http://5.164.142.108:4173/api/services`: ожидаются `Healthy` и JSON прайс-листа.
+
+Перезапуск с проверкой сохранности данных:
+
+```bash
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS orders FROM repair_order; SELECT count(*) AS clients FROM client;"'
+docker compose restart db api
+docker compose up -d --wait --wait-timeout 180
+docker compose ps
+curl --fail http://127.0.0.1:8080/health
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT count(*) AS orders FROM repair_order; SELECT count(*) AS clients FROM client;"'
+```
+
+Количество записей до и после должно совпасть, существующие заявки должны открываться через API. Данные PostgreSQL сохраняются в именованном volume `pgdata`; `docker compose down` его сохраняет, а `down -v` удаляет. Логи API и БД: `docker compose logs -f api db`.
+
+Проверка полного входа и обновления сессии через браузер выполняется после подключения интерфейса к актуальным контрактам телефона и VK. Рабочее проксирование `/api` проверяется отдельно от этого сценария.
 
 ## Схема БД
 
@@ -249,7 +296,7 @@ Content-Type: application/json
 
 Миграция `UseVkPhoneAuthentication` удаляет email-поля клиента и заявки, аннулирует старые email-коды и связывает новые коды с привязкой VK. Заказы, клиенты, аккаунты и их идентификаторы сохраняются. Перед обновлением существующего стенда сохранить резервную копию; удалённые email и старые коды при откате не восстанавливаются. Если у клиента без телефона сохранилась привязка VK к аккаунту, при успешном входе пустой телефон заполняется из этой привязки. Клиентам без телефона и без такой привязки нужно отдельно назначить корректный телефон для нового входа.
 
-В Development миграция применяется при старте, если `Database__MigrateOnStartup` не выключен. Для Production применить миграции отдельно перед запуском новой версии. Обновить настройки мастера и фронтенд под контракт телефона и `requiresContactConfirmation` вместо `requiresEmailConfirmation`.
+Автоматическое применение миграций управляется `Database__MigrateOnStartup` (в `.env` Docker Compose — `DATABASE_MIGRATE_ON_STARTUP`). В Docker Compose по умолчанию оно включено; без Docker при отсутствии настройки включено только в Development. Если автомиграции отключены, применить миграции отдельно перед запуском новой версии. Обновить настройки мастера и фронтенд под контракт телефона и `requiresContactConfirmation` вместо `requiresEmailConfirmation`.
 
 ### Уведомления о статусе
 

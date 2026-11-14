@@ -149,10 +149,21 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ProPhoneServiceDbContext>();
 
-    // Автомиграции в Development; Database__MigrateOnStartup=false отключает (тесты)
-    if (app.Environment.IsDevelopment() && builder.Configuration.GetValue("Database:MigrateOnStartup", true))
+    var migrateOnStartup = builder.Configuration.GetValue<bool?>("Database:MigrateOnStartup")
+        ?? app.Environment.IsDevelopment();
+
+    if (migrateOnStartup)
     {
-        db.Database.Migrate();
+        app.Logger.LogInformation("Применение миграций БД при запуске в окружении {Environment}",
+            app.Environment.EnvironmentName);
+
+        await db.Database.MigrateAsync();
+
+        app.Logger.LogInformation("Миграции БД применены, схема актуальна");
+    }
+    else
+    {
+        app.Logger.LogInformation("Автоматическое применение миграций БД при запуске отключено");
     }
 
     // Мастер-аккаунт: апсерт роли Master для Auth:MasterPhone (пусто - пропуск)

@@ -111,7 +111,7 @@ public class MessengerBindingPersistenceTests
         public ProPhoneServiceDbContext Context(params IInterceptor[] interceptors) => new(new DbContextOptionsBuilder<ProPhoneServiceDbContext>()
             .UseNpgsql(connection).AddInterceptors(interceptors).Options);
 
-        public static async Task<Database> CreateAsync()
+        public static async Task<Database> CreateAsync(bool migrate = true)
         {
             var adminConnection = Environment.GetEnvironmentVariable("PROPHONE_TEST_POSTGRES_CONNECTION")!;
             var name = "messenger_test_" + Guid.NewGuid().ToString("N");
@@ -124,7 +124,11 @@ public class MessengerBindingPersistenceTests
             try
             {
                 await using var context = database.Context();
-                await context.Database.MigrateAsync();
+                if (migrate)
+                {
+                    await context.Database.MigrateAsync();
+                }
+
                 return database;
             }
             catch

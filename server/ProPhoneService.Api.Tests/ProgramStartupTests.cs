@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.TestHost;
 using ProPhoneService.Infrastructure.EfCore.Notifications;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using static ProPhoneService.Api.Tests.MessengerBindingPersistenceTests;
 
 namespace ProPhoneService.Api.Tests;
 
@@ -22,6 +24,9 @@ public class ProgramStartupTests
             {
                 var polling = services.Single(x => x.ImplementationType == typeof(VkLongPollService));
                 services.Remove(polling);
+
+                var expiration = services.Single(x => x.ImplementationType == typeof(PendingOrderExpirationService));
+                services.Remove(expiration);
             });
             configure?.Invoke(host);
         });
@@ -45,6 +50,37 @@ public class ProgramStartupTests
         var response = await client.GetAsync("/health");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [PostgresTheory]
+    [InlineData("Development", true)]
+    [InlineData("Development", false)]
+    [InlineData("Production", true)]
+    [InlineData("Production", false)]
+    public async Task Startup_MigrationsFollowExplicitSetting(string environment, bool migrateOnStartup)
+    {
+        await using var database = await Database.CreateAsync(migrate: false);
+        await using var context = database.Context();
+        using var factory = Factory(environment, host =>
+        {
+            host.UseSetting("ConnectionStrings:Default", context.Database.GetConnectionString());
+            host.UseSetting("Database:MigrateOnStartup", migrateOnStartup.ToString());
+        });
+
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var applied = await context.Database.GetAppliedMigrationsAsync();
+        if (migrateOnStartup)
+        {
+            Assert.NotEmpty(applied);
+            Assert.Empty(await context.Database.GetPendingMigrationsAsync());
+        }
+        else
+        {
+            Assert.Empty(applied);
+        }
     }
 
     [Theory]
