@@ -13,19 +13,39 @@ public class MessengerBindingRepository(ProPhoneServiceDbContext context)
 {
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default) =>
-        Set.AsNoTracking().FirstOrDefaultAsync(x => x.Channel == MessengerChannel.Vk && x.TokenHash == tokenHash, cancellationToken);
+        Set
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Channel == MessengerChannel.Vk && x.TokenHash == tokenHash, cancellationToken);
 
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default) =>
-        Set.AsNoTracking().Where(x => x.Channel == MessengerChannel.Vk && x.Phone == phone && x.RecipientId != null && x.LinkedAt != null)
-            .OrderByDescending(x => x.AccountId != null).ThenByDescending(x => x.LinkedAt)
-            .ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+        Set
+            .AsNoTracking()
+            .Where(x => x.Channel == MessengerChannel.Vk && x.Phone == phone && x.RecipientId != null && x.LinkedAt != null)
+            .OrderByDescending(x => x.AccountId != null)
+                .ThenByDescending(x => x.LinkedAt)
+                    .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+
+    /// <inheritdoc />
+    public Task<MessengerBinding?> GetByClientIdAsync(Guid clientId, CancellationToken cancellationToken = default) =>
+        Set
+            .AsNoTracking()
+            .Where(x => x.Channel == MessengerChannel.Vk && x.RecipientId != null && x.LinkedAt != null
+                && x.AccountId != null && Context.Set<Account>().Any(a => a.Id == x.AccountId && a.ClientId == clientId))
+            .OrderByDescending(x => x.LinkedAt)
+                .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
     public Task<MessengerBinding?> GetByOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
-        Set.AsNoTracking().Where(x => x.Channel == MessengerChannel.Vk && x.OrderId == orderId
-            && x.RecipientId != null && x.LinkedAt != null)
-            .OrderByDescending(x => x.LinkedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
+        Set
+            .AsNoTracking()
+            .Where(x => x.Channel == MessengerChannel.Vk && x.OrderId == orderId
+                && x.RecipientId != null && x.LinkedAt != null)
+            .OrderByDescending(x => x.LinkedAt)
+                .ThenByDescending(x => x.Id)
+            .FirstOrDefaultAsync(cancellationToken);
 
     /// <inheritdoc />
     public async Task<bool> TryBindAsync(string tokenHash, MessengerChannel channel, string recipientId,

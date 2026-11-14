@@ -25,7 +25,8 @@ public class AuthService(
     AuthOptions authOptions,
     JwtOptions jwtOptions,
     IRefreshTokenStore refreshStore,
-    IMessengerBindingRepository bindings)
+    IMessengerBindingRepository bindings,
+    StatusNotificationService statusNotifications)
 {
     /// <summary>
     /// Запросить код через подтверждённую привязку VK с ограничением частоты
@@ -117,8 +118,16 @@ public class AuthService(
             return AuthOutcome.Failure(400, "Код не введён", "Введите код из сообщения VK");
         }
 
-        return await authCodeRepository.ExecuteForPhoneAsync(normalized,
+        var outcome = await authCodeRepository.ExecuteForPhoneAsync(normalized,
             () => ConfirmCoreAsync(normalized, code.Trim(), cancellationToken), cancellationToken);
+
+        // ExecuteForPhoneAsync уже зафиксировал транзакцию с заявкой, аккаунтом и погашенным кодом
+        if (outcome.ActivatedOrder is not null)
+        {
+            await statusNotifications.NotifyStatusChangedAsync(outcome.ActivatedOrder, cancellationToken);
+        }
+
+        return outcome;
     }
 
     private async Task<AuthOutcome> ConfirmCoreAsync(string phone, string code, CancellationToken ct)
@@ -236,7 +245,7 @@ public class AuthService(
         authCodeRepository.Remove(authCode);
         await clientRepository.SaveChangesAsync(ct);
 
-        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, account.Role, now));
+        return AuthOutcome.Success(IssueTokens(account.Id, client.Id, account.Role, now), pending);
     }
 
     private static AuthOutcome InvalidPhone() =>

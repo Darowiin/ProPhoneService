@@ -19,7 +19,8 @@ public class OrderCreationService(
     IRepairOrderRepository orderRepository,
     MessengerBindingService messengerBindings,
     TimeProvider timeProvider,
-    IOptions<WorkshopOptions> workshopOptions)
+    IOptions<WorkshopOptions> workshopOptions,
+    StatusNotificationService statusNotifications)
 {
     /// <summary>
     /// Создать заявку на ремонт
@@ -115,6 +116,11 @@ public class OrderCreationService(
         await deviceRepository.AddAsync(device, cancellationToken);
         await orderRepository.AddAsync(order, cancellationToken);
         await orderRepository.SaveChangesAsync(cancellationToken);
+
+        if (!isGuest)
+        {
+            await statusNotifications.NotifyStatusChangedAsync(order, cancellationToken);
+        }
 
         var link = isGuest
             ? await messengerBindings.CreateForOrderAsync(order.Id, MessengerChannel.Vk, cancellationToken)

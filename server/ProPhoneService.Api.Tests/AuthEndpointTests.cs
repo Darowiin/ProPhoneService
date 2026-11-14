@@ -79,6 +79,10 @@ public class AuthEndpointTests
                     var bindings = new Mock<IMessengerBindingRepository>();
                     bindings.Setup(x => x.GetByPhoneAsync(Phone, It.IsAny<CancellationToken>())).ReturnsAsync(binding);
                     bindings.Setup(x => x.GetByIdAsync(binding.Id, It.IsAny<CancellationToken>())).ReturnsAsync(binding);
+                    bindings.Setup(x => x.GetByClientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(binding);
+                    services.RemoveAll<IRepository<NotificationLog>>();
+                    services.AddSingleton(Mock.Of<IRepository<NotificationLog>>());
                     services.RemoveAll<IMessengerBindingRepository>();
                     services.AddSingleton(bindings.Object);
                     services.AddSingleton(new AuthOptions { MasterVkUserId = TrustedMasterVkId });

@@ -61,6 +61,7 @@ public class CreateOrderEndpointTests
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.UseSetting("Database:MigrateOnStartup", "false");
+                host.UseSetting("Notifications:RetryDelay", "00:00:00");
                 host.ConfigureTestServices(services =>
                 {
                     var deviceRepo = new Mock<IRepository<Device>>();
@@ -104,6 +105,14 @@ public class CreateOrderEndpointTests
                     var bindingRepo = new Mock<IMessengerBindingRepository>();
                     bindingRepo.Setup(x => x.AddAsync(It.IsAny<MessengerBinding>(), It.IsAny<CancellationToken>()))
                         .Returns(Task.CompletedTask);
+                    bindingRepo.Setup(x => x.GetByClientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new MessengerBinding
+                        {
+                            Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
+                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = _nowUtc.UtcDateTime,
+                        });
+                    services.RemoveAll<IRepository<NotificationLog>>();
+                    services.AddSingleton(Mock.Of<IRepository<NotificationLog>>());
                     services.RemoveAll<IMessengerBindingRepository>();
                     services.AddSingleton(bindingRepo.Object);
                     services.RemoveAll<MessengerOptions>();
@@ -112,14 +121,14 @@ public class CreateOrderEndpointTests
                     var notifier = new Mock<INotifier>();
                     notifier
                         .Setup(n => n.SendAsync(
-                            It.IsAny<string>(),
+                            It.IsAny<MessengerChannel>(),
                             It.IsAny<string>(),
                             It.IsAny<string>(),
                             It.IsAny<CancellationToken>()))
-                        .Callback((string target, string subject, string text, CancellationToken _) =>
+                        .Callback((MessengerChannel channel, string target, string text, CancellationToken _) =>
                         {
-                            if (FailNotification) throw new IOException("SMTP unavailable");
-                            Notifications.Add((target, subject, text));
+                            if (FailNotification) throw new IOException("VK unavailable");
+                            Notifications.Add((target, channel.ToString(), text));
                         })
                         .Returns(Task.CompletedTask);
 
@@ -262,7 +271,10 @@ public class CreateOrderEndpointTests
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(RepairStatus.Created, harness.CreatedOrder.Status);
         Assert.Equal(clientId, harness.CreatedOrder.ClientId);
-        Assert.Empty(harness.Notifications);
+        var notification = Assert.Single(harness.Notifications);
+        Assert.Equal("42", notification.Target);
+        Assert.Contains("Заявка принята", notification.Text);
+        Assert.DoesNotContain("Ваш код подтверждения", notification.Text);
     }
 
     [Fact]
@@ -394,5 +406,19 @@ public class CreateOrderEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadErrorsAsync(response);
         Assert.True(errors.ContainsKey("ServiceIds"));
+    }
+
+    [Fact]
+    public async Task Create_AuthenticatedClientWithUnavailableVk_StillReturnsCreatedOrder()
+    {
+        var harness = new CreateOrderHarness { FailNotification = true };
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForClient(Guid.NewGuid()));
+
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([]));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(RepairStatus.Created, harness.CreatedOrder!.Status);
+        Assert.NotNull(harness.CreatedOrder.ClientId);
     }
 }

@@ -19,6 +19,11 @@ public interface IMessengerBindingRepository : IRepository<MessengerBinding>
     Task<MessengerBinding?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Найти актуальную привязку VK аккаунта, принадлежащего клиенту
+    /// </summary>
+    Task<MessengerBinding?> GetByClientIdAsync(Guid clientId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Найти последнюю привязку конкретной заявки
     /// </summary>
     Task<MessengerBinding?> GetByOrderAsync(Guid orderId, CancellationToken cancellationToken = default);

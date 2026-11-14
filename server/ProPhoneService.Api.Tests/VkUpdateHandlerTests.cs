@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
@@ -34,7 +35,9 @@ public class VkUpdateHandlerTests
         var handler = new VkUpdateHandler(bindings, notifier.Object, options,
             new AuthService(Mock.Of<IAccountRepository>(), Mock.Of<IClientRepository>(),
                 Mock.Of<IAuthCodeRepository>(), Mock.Of<IRepairOrderRepository>(), notifier.Object,
-                TimeProvider.System, new(), new(), new InMemoryRefreshTokenStore(TimeProvider.System), repo.Object));
+                TimeProvider.System, new(), new(), new InMemoryRefreshTokenStore(TimeProvider.System), repo.Object,
+                new StatusNotificationService(notifier.Object, Mock.Of<IRepository<NotificationLog>>(), new(),
+                    NullLogger<StatusNotificationService>.Instance, repo.Object)));
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
         {
             type = "message_new", group_id = groupId,

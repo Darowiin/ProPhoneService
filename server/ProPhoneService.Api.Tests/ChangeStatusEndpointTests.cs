@@ -21,6 +21,8 @@ public class ChangeStatusEndpointTests
 
         public bool ThrowConcurrency { get; init; }
 
+        public bool HasBinding { get; init; } = true;
+
         /// <summary>
         /// Сколько первых вызовов провайдера завершатся ошибкой (проверка повторов)
         /// </summary>
@@ -61,14 +63,24 @@ public class ChangeStatusEndpointTests
                             return 1;
                         });
 
+                    var bindings = new Mock<IMessengerBindingRepository>();
+                    bindings.Setup(x => x.GetByClientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(() => HasBinding ? new MessengerBinding
+                        {
+                            Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
+                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = DateTime.UtcNow,
+                        } : null);
+                    services.RemoveAll<IMessengerBindingRepository>();
+                    services.AddSingleton(bindings.Object);
+
                     var notifier = new Mock<INotifier>();
                     notifier
                         .Setup(n => n.SendAsync(
-                            It.IsAny<string>(),
+                            It.IsAny<MessengerChannel>(),
                             It.IsAny<string>(),
                             It.IsAny<string>(),
                             It.IsAny<CancellationToken>()))
-                        .Returns((string _, string _, string _, CancellationToken _) =>
+                        .Returns((MessengerChannel _, string _, string _, CancellationToken _) =>
                         {
                             NotificationCalls++;
                             return NotificationCalls <= NotificationFailures
@@ -152,7 +164,8 @@ public class ChangeStatusEndpointTests
 
         var log = Assert.Single(store.Logs);
         Assert.Equal(order.Id, log.RepairOrderId);
-        Assert.Equal("+79001234567", log.Recipient);
+        Assert.Equal("42", log.Recipient);
+        Assert.Equal(MessengerChannel.Vk, log.Channel);
         Assert.Equal(NotificationDeliveryStatus.Sent, log.Status);
         Assert.Equal(1, log.Attempts);
         Assert.Contains("В ремонте", log.Message);
@@ -205,11 +218,11 @@ public class ChangeStatusEndpointTests
     }
 
     [Fact]
-    public async Task ChangeStatus_NoRecipient_SkipsNotificationAndKeepsStatusChange()
+    public async Task ChangeStatus_NoBinding_LogsFailedWithoutProviderCallAndKeepsStatusChange()
     {
         var order = NewOrder();
         order.ContactPhone = null;
-        var store = new OrderStore { Order = order };
+        var store = new OrderStore { Order = order, HasBinding = false };
         using var factory = store.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
@@ -219,7 +232,11 @@ public class ChangeStatusEndpointTests
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
         Assert.Equal(0, store.NotificationCalls);
-        Assert.Empty(store.Logs);
+        var log = Assert.Single(store.Logs);
+        Assert.Equal(MessengerChannel.Vk, log.Channel);
+        Assert.Null(log.Recipient);
+        Assert.Equal(0, log.Attempts);
+        Assert.Equal(NotificationDeliveryStatus.Failed, log.Status);
     }
 
     [Fact]
