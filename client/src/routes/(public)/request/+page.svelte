@@ -29,7 +29,6 @@
 	let selectedServiceIds = $state<string[]>([]);
 	let contact = $state('');
 	let problemDescription = $state('');
-	let confirmationEmail = $state('');
 	let visitDate = $state('');
 	let visitTime = $state('');
 	let services = $state<ServiceDto[]>([]);
@@ -66,16 +65,14 @@
 			});
 	});
 
-	// ── Validation: mirrors the backend WorkshopOptions ────────────────────
-	const contactIsEmail = $derived(contact.includes('@'));
+	// ── Validation: mirrors the backend (phone is the only contact) ────────
 	const contactValue = $derived(contact.trim());
-	const emailValid = $derived(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contactValue));
 	const phoneDigits = $derived(contact.replace(/\D/g, ''));
 	const phoneValid = $derived(
 		/^\+7\d{10}$/.test(`+7${phoneDigits.slice(1)}`) && phoneDigits.length === 11
 	);
 
-	const contactValid = $derived(contactIsEmail ? emailValid : phoneValid);
+	const contactValid = $derived(phoneValid);
 
 	const visitTimes = $derived(
 		Array.from(
@@ -120,8 +117,6 @@
 		(deviceId !== CUSTOM_DEVICE || deviceManufacturer.length > 0) &&
 		selectedServiceIds.length > 0 &&
 		contactValid &&
-		// Гость с телефоном обязан дать почту: код активации уйдёт туда.
-		(session.user || contactIsEmail || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(confirmationEmail.trim())) &&
 		visitDate !== '' &&
 		visitTime !== '' &&
 		!visitError
@@ -138,11 +133,7 @@
 			case 'services':
 				return selectedServiceIds.length > 0 ? null : 'Выберите хотя бы одну услугу';
 			case 'contact':
-				return contactValid
-					? null
-					: contactIsEmail
-						? 'Введите корректный email'
-						: 'Введите телефон в формате +7 (XXX) XXX-XX-XX';
+				return contactValid ? null : 'Введите телефон в формате +7 (XXX) XXX-XX-XX';
 			case 'visit':
 				if (!visitDate) return 'Выберите дату визита';
 				if (!visitTime) return 'Выберите время визита';
@@ -180,8 +171,7 @@
 	}
 
 	function onContactInput(event: Event): void {
-		const raw = (event.target as HTMLInputElement).value;
-		contact = /[A-Za-z@]/.test(raw) ? raw : formatPhone(raw);
+		contact = formatPhone((event.target as HTMLInputElement).value);
 	}
 
 	function toggleService(id: string): void {
@@ -213,14 +203,11 @@
 
 		submitting = true;
 		let result: CreateOrderResult;
-		// Card 3: a guest order requires an email — it goes through the code
-		// confirmation; the phone is kept for contact only.
-		const guestEmail = contactIsEmail ? contactValue : confirmationEmail.trim();
+		const orderPhone = `+7${phoneDigits.slice(1)}`;
 		try {
 			const payload: CreateOrderPayload = {
 				name: clientName.trim(),
-				phone: contactIsEmail ? null : `+7${phoneDigits.slice(1)}`,
-				email: guestEmail,
+				phone: orderPhone,
 				deviceType: 'Phone',
 				deviceManufacturer,
 				deviceModel,
@@ -261,11 +248,19 @@
 			return;
 		}
 
-		// Card 3: any PendingContact result must pass through the email code
-		// screen — a stale local session is not enough to skip it (the API
-		// knows whether the order needs confirmation).
-		if (result.requiresEmailConfirmation) {
-			const param = new URLSearchParams({ id: result.id, email: guestEmail });
+		// Card 10: any PendingContact result must pass through the VK code
+		// screen — the API decides whether confirmation is needed and hands
+		// out the one-time messenger link.
+		if (result.requiresContactConfirmation) {
+			const param = new URLSearchParams({
+				id: result.id,
+				number: result.orderNumber,
+				phone: orderPhone
+			});
+			if (result.messengerLink) {
+				param.set('link', result.messengerLink.url);
+				param.set('expires', result.messengerLink.expiresAtUtc);
+			}
 			await goto(`/request/confirm?${param}`);
 			return;
 		}
@@ -406,37 +401,22 @@
 			</div>
 
 			<div class="field">
-				<label class="label" for="contact">Телефон или почта для связи</label>
+				<label class="label" for="contact">Телефон для связи</label>
 				<input
 					id="contact"
 					class="input"
 					class:input--error={!!fieldError('contact')}
-					placeholder="+7 (___) ___-__-__ или mail@example.com"
+					inputmode="tel"
+					placeholder="+7 (___) ___-__-__"
 					value={contact}
 					oninput={onContactInput}
 					onblur={() => markTouched('contact')}
 				/>
-				<span class="hint">Только для связи по ремонту. Никаких рекламных сообщений.</span>
+				<span class="hint">Пришлём код подтверждения в VK-сообщения этой группе контактов.</span>
 				{#if fieldError('contact')}
 					<span class="error" role="alert">{fieldError('contact')}</span>
 				{/if}
 			</div>
-
-			{#if !contactIsEmail}
-				<div class="field">
-					<label class="label" for="confirmEmail">Почта для подтверждения заявки</label>
-					<input
-						id="confirmEmail"
-						class="input"
-						class:input--error={touched.confirmEmail && !confirmationEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/)}
-						type="email"
-						placeholder="mail@example.com"
-						bind:value={confirmationEmail}
-						onblur={() => markTouched('confirmEmail')}
-					/>
-					<span class="hint">Отправим сюда одноразовый код — без него заявка не активируется.</span>
-				</div>
-			{/if}
 
 			<div class="field">
 				<label class="label" for="description">Описание проблемы</label>

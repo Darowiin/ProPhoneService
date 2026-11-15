@@ -249,7 +249,7 @@ export interface AccountOrder {
 	createdAt: string;
 	device: string;
 	repair: string;
-	status: 'InProgress' | 'Ready';
+	status: 'InProgress' | 'Ready' | 'Completed';
 	price: number;
 	/** Timeline entries for the repair card. */
 	timeline: { label: string; at: string }[];
@@ -261,7 +261,7 @@ export const accountMock = {
 		id: 'a1f3c2d4-0000-4a01-9c11-000000000000',
 		name: 'Анна Смирнова',
 		phone: '+7 (916) 234-56-78',
-		email: 'anna@example.com'
+		vkLinked: true
 	},
 	orders: [
 		{
@@ -276,8 +276,6 @@ export const accountMock = {
 			expectedReady: 'Ожидаемая готовность: 2 октября 2026, до 18:00',
 			timeline: [
 				{ label: 'Заявка принята', at: '01.10.2026, 10:12' },
-				{ label: 'Диагностика', at: '01.10.2026, 11:40' },
-				{ label: 'Согласована цена', at: '01.10.2026, 13:05' },
 				{ label: 'В ремонте', at: '01.10.2026, 15:20' }
 			]
 		},
@@ -293,9 +291,8 @@ export const accountMock = {
 			expectedReady: '',
 			timeline: [
 				{ label: 'Заявка принята', at: '12.08.2026, 09:30' },
-				{ label: 'Диагностика', at: '12.08.2026, 10:10' },
 				{ label: 'В ремонте', at: '12.08.2026, 11:00' },
-				{ label: 'Готово', at: '12.08.2026, 15:45' }
+				{ label: 'Готов к выдаче', at: '12.08.2026, 15:45' }
 			]
 		},
 		{
@@ -310,7 +307,7 @@ export const accountMock = {
 			expectedReady: '',
 			timeline: [
 				{ label: 'Заявка принята', at: '24.05.2026, 12:00' },
-				{ label: 'Готово', at: '24.05.2026, 18:20' }
+				{ label: 'Готов к выдаче', at: '24.05.2026, 18:20' }
 			]
 		},
 		{
@@ -325,7 +322,7 @@ export const accountMock = {
 			expectedReady: '',
 			timeline: [
 				{ label: 'Заявка принята', at: '03.02.2026, 14:00' },
-				{ label: 'Готово', at: '03.02.2026, 17:30' }
+				{ label: 'Выдан клиенту', at: '03.02.2026, 17:30' }
 			]
 		}
 	] as AccountOrder[],

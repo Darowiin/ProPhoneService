@@ -16,8 +16,6 @@ import type { AuthSession } from './auth.ts';
 export type RepairStatus =
 	| 'PendingContact'
 	| 'Created'
-	| 'InDiagnostic'
-	| 'Agreed'
 	| 'InProgress'
 	| 'Ready'
 	| 'Completed'
@@ -25,8 +23,8 @@ export type RepairStatus =
 
 export interface RepairOrderDto {
 	id: string;
-	/** The API exposes the Guid as the order identifier; mocks use the design's ПТ- number. */
-	number: string;
+	/** Human-readable order number (З-000001); the Guid `id` stays for routes. */
+	orderNumber: string;
 	clientName: string | null;
 	deviceName: string;
 	serviceName: string | null;
@@ -42,7 +40,10 @@ export interface RepairOrderDto {
 
 export interface RepairStatusHistoryDto {
 	status: RepairStatus;
+	/** Русское название статуса от API (RepairStatusNames). */
+	statusName: string;
 	changedAt: string;
+	/** Осталось в домене, но в пользовательском сценарии не используется. */
 	comment: string | null;
 }
 
@@ -56,14 +57,12 @@ export interface ServiceDto {
 }
 
 /**
- * Mirrors POST /api/orders. Phone or email is required by the backend, so exactly
- * one of them carries the value the client typed into the single contact field.
+ * Mirrors POST /api/orders (sprint 3): phone is the only contact, VK is the
+ * only confirmation and notification channel.
  */
 export interface CreateOrderPayload {
 	name: string;
 	phone: string | null;
-	/** Guest orders require an email: it goes through the code confirmation. */
-	email: string | null;
 	deviceType: 'Phone' | 'Tablet' | 'Laptop';
 	deviceManufacturer: string;
 	deviceModel: string;
@@ -73,12 +72,21 @@ export interface CreateOrderPayload {
 	problemDescription: string | null;
 }
 
+export interface MessengerLinkDto {
+	channel: 'Vk';
+	url: string;
+	expiresAtUtc: string;
+}
+
 export interface CreateOrderResult {
 	id: string;
-	/** True — заявка создана как PendingContact, подтвердите email кодом. */
-	requiresEmailConfirmation: boolean;
-	number: string;
-	status: RepairStatus;
+	/** Постоянный номер заявки (З-000001) для интерфейса и уведомлений. */
+	orderNumber: string;
+	/** True — заявка PendingContact: подтвердите телефон кодом из VK. */
+	requiresContactConfirmation: boolean;
+	/** Ссылка на диалог сообщества VK с одноразовым токеном привязки. */
+	messengerLink: MessengerLinkDto | null;
+	status: RepairStatus | null;
 }
 
 export class ApiError extends Error {
@@ -95,25 +103,23 @@ export class ApiError extends Error {
 // ─── Status transitions (mirrors RepairStatusTransitions from Domain.Shared) ──
 
 export const statusTransitions: Record<RepairStatus, RepairStatus[]> = {
-	PendingContact: [],
-	Created: ['InDiagnostic', 'Cancelled'],
-	InDiagnostic: ['Agreed', 'Cancelled'],
-	Agreed: ['InProgress', 'Cancelled'],
+	PendingContact: ['Created', 'Cancelled'],
+	Created: ['InProgress', 'Ready', 'Cancelled'],
 	InProgress: ['Ready', 'Cancelled'],
 	Ready: ['Completed'],
 	Completed: [],
 	Cancelled: []
 };
 
+/** Mirrors RepairStatusNames from Domain.Shared — the API sends `statusName`,
+ *  these labels keep the mock mode and fallbacks in sync. */
 export const statusLabels: Record<RepairStatus, string> = {
 	PendingContact: 'Ожидает подтверждения',
-	Created: 'Принята',
-	InDiagnostic: 'Диагностика',
-	Agreed: 'Согласована',
+	Created: 'Заявка принята',
 	InProgress: 'В ремонте',
-	Ready: 'Готово',
-	Completed: 'Выдана',
-	Cancelled: 'Отменена'
+	Ready: 'Готов к выдаче',
+	Completed: 'Выдан клиенту',
+	Cancelled: 'Заявка отменена'
 };
 
 const mockServices: ServiceDto[] = [
@@ -134,7 +140,7 @@ const mockServices: ServiceDto[] = [
 const orders: RepairOrderDto[] = [
 	{
 		id: 'a1f3c2d4-0001-4a01-9c11-111111111111',
-		number: 'ПТ-1048',
+		orderNumber: 'З-1048',
 		clientName: 'Анна Смирнова',
 		deviceName: 'iPhone 13',
 		serviceName: 'Замена аккумулятора',
@@ -147,20 +153,20 @@ const orders: RepairOrderDto[] = [
 	},
 	{
 		id: 'a1f3c2d4-0002-4a01-9c11-222222222222',
-		number: 'ПТ-1047',
+		orderNumber: 'З-1047',
 		clientName: 'Дмитрий Волков',
 		deviceName: 'Samsung Galaxy S23',
 		serviceName: 'Замена дисплея',
 		price: 9900,
 		priceFrom: true,
 		problem: null,
-		status: 'InDiagnostic',
+		status: 'InProgress',
 		createdAt: '2026-10-01T09:10:00Z',
 		preferredVisitAt: null
 	},
 	{
 		id: 'a1f3c2d4-0003-4a01-9c11-333333333333',
-		number: 'ПТ-1046',
+		orderNumber: 'З-1046',
 		clientName: 'Мария Соколова',
 		deviceName: 'Xiaomi Redmi Note 12',
 		serviceName: 'Не заряжается',
@@ -173,7 +179,7 @@ const orders: RepairOrderDto[] = [
 	},
 	{
 		id: 'a1f3c2d4-0004-4a01-9c11-444444444444',
-		number: 'ПТ-1045',
+		orderNumber: 'З-1045',
 		clientName: 'Илья Козлов',
 		deviceName: 'iPhone 14',
 		serviceName: 'Замена заднего стекла',
@@ -186,7 +192,7 @@ const orders: RepairOrderDto[] = [
 	},
 	{
 		id: 'a1f3c2d4-0005-4a01-9c11-555555555555',
-		number: 'ПТ-1021',
+		orderNumber: 'З-1021',
 		clientName: 'Анна Смирнова',
 		deviceName: 'iPhone 13',
 		serviceName: 'Замена дисплея',
@@ -199,7 +205,7 @@ const orders: RepairOrderDto[] = [
 	},
 	{
 		id: 'a1f3c2d4-0006-4a01-9c11-666666666666',
-		number: 'ПТ-0986',
+		orderNumber: 'З-0986',
 		clientName: 'Анна Смирнова',
 		deviceName: 'Samsung Galaxy A52',
 		serviceName: 'Замена разъёма зарядки',
@@ -212,7 +218,7 @@ const orders: RepairOrderDto[] = [
 	},
 	{
 		id: 'a1f3c2d4-0007-4a01-9c11-777777777777',
-		number: 'ПТ-0912',
+		orderNumber: 'З-0912',
 		clientName: 'Анна Смирнова',
 		deviceName: 'iPhone 11',
 		serviceName: 'Замена аккумулятора',
@@ -251,8 +257,6 @@ export function deriveMasterStats(
 	const statusCounts: Record<RepairStatus, number> = {
 		PendingContact: 0,
 		Created: 0,
-		InDiagnostic: 0,
-		Agreed: 0,
 		InProgress: 0,
 		Ready: 0,
 		Completed: 0,
@@ -261,7 +265,6 @@ export function deriveMasterStats(
 	let todayCount = 0;
 	let yesterdayCount = 0;
 	let inWork = 0;
-	let inDiagnostic = 0;
 	const clients = new Set<string>();
 	const nowMonth = now.getUTCMonth();
 	const nowYear = now.getUTCFullYear();
@@ -275,8 +278,7 @@ export function deriveMasterStats(
 		const created = new Date(order.createdAt);
 		if (sameWorkshopDay(created, now)) todayCount++;
 		if (sameWorkshopDay(created, new Date(now.getTime() - 86_400_000))) yesterdayCount++;
-		if (order.status === 'InProgress' || order.status === 'Agreed') inWork++;
-		if (order.status === 'InDiagnostic') inDiagnostic++;
+		if (order.status === 'InProgress') inWork++;
 		// API mode warms the price for every loaded row (detail enrichment),
 		// so the month revenue is computable locally — but only over the
 		// loaded page, hence the honest note for the backend mode.
@@ -295,7 +297,7 @@ export function deriveMasterStats(
 				? 'как вчера'
 				: `${delta > 0 ? '+' : ''}${delta} к предыдущему дню`,
 		inWork,
-		inWorkNote: inDiagnostic > 0 ? `Ещё ${inDiagnostic} — на диагностике` : 'Все вне диагностики',
+		inWorkNote: 'На мастере с момента приёма',
 		revenueMonth: `${priceFormat.format(monthRevenue)} ₽`,
 		revenueNote: backendMode
 			? `по загруженным заявкам · ${monthCompleted} ${pluralize(monthCompleted, ['ремонт', 'ремонта', 'ремонтов'])}`
@@ -335,7 +337,11 @@ const apiPageSize = 25; // OrderWorkflowService.PageSize in feat/backend-foundat
 
 interface BackendOrderDto {
 	id: string;
+	/** Постоянный номер заявки (З-000001). */
+	orderNumber: string;
 	status: RepairStatus | null;
+	/** Русское название статуса от API (RepairStatusNames). */
+	statusName: string;
 	device: { type: string; manufacturer: string; model: string };
 	preferredVisitAt: string | null;
 	createdAt: string;
@@ -344,10 +350,9 @@ interface BackendOrderDto {
 
 /** GET /orders/{id} or GET /me/orders/{id} — the list DTO omits these fields. */
 interface BackendOrderDetailDto extends BackendOrderDto {
-	client: { id: string; name: string; phone: string; email: string | null } | null;
+	client: { id: string; name: string; phone: string | null } | null;
 	/** Контакты из формы заявки: клиент ещё не создан, пока заявка не подтверждена. */
 	contactName: string | null;
-	contactEmail: string | null;
 	contactPhone: string | null;
 	services: { serviceId: string; name: string; price: number }[];
 	totalPrice: number;
@@ -356,13 +361,15 @@ interface BackendOrderDetailDto extends BackendOrderDto {
 
 interface BackendCreateOrderResponse {
 	id: string;
-	requiresEmailConfirmation: boolean;
+	orderNumber: string;
+	requiresContactConfirmation: boolean;
+	messengerLink: { channel: string; url: string; expiresAtUtc: string } | null;
 }
 
 function asFrontendOrder(order: BackendOrderDto): RepairOrderDto {
 	return {
 		id: order.id,
-		number: order.id,
+		orderNumber: order.orderNumber,
 		clientName: null,
 		deviceName: [order.device.manufacturer, order.device.model].filter(Boolean).join(' '),
 		serviceName: null,
@@ -617,7 +624,7 @@ export async function fetchMasterServices(): Promise<ServiceDto[]> {
 export function asFrontendOrderDetail(order: BackendOrderDetailDto): RepairOrderDto {
 	return {
 		id: order.id,
-		number: order.id,
+		orderNumber: order.orderNumber ?? order.id,
 		clientName: order.client?.name ?? order.contactName ?? null,
 		deviceName: [order.device.manufacturer, order.device.model].filter(Boolean).join(' '),
 		serviceName: order.services.map((service) => service.name).join(', ') || null,
@@ -634,7 +641,7 @@ export function asFrontendOrderDetail(order: BackendOrderDetailDto): RepairOrder
 export async function fetchOrderById(id: string): Promise<RepairOrderDto> {
 	if (isMockMode) {
 		await delay();
-		const order = orders.find((item) => item.id === id || item.number.toLowerCase() === id.toLowerCase());
+		const order = orders.find((item) => item.id === id || item.orderNumber.toLowerCase() === id.toLowerCase());
 		if (!order) throw new ApiError('Заявка не найдена', 404);
 		return { ...order };
 	}
@@ -644,23 +651,33 @@ export async function fetchOrderById(id: string): Promise<RepairOrderDto> {
 export async function createOrder(payload: CreateOrderPayload): Promise<CreateOrderResult> {
 	if (isMockMode) {
 		await delay(350);
-		const number = `ПТ-${nextOrderNumber++}`;
+		const orderNumber = `З-${String(nextOrderNumber++).padStart(6, '0')}`;
 		const selectedServices = mockServices.filter((service) => payload.serviceIds.includes(service.id));
 		const orderId = crypto.randomUUID();
 		orders.unshift({
 			id: orderId,
-			number,
+			orderNumber,
 			clientName: payload.name,
 			deviceName: `${payload.deviceManufacturer} ${payload.deviceModel}`.trim(),
 			serviceName: selectedServices.map((service) => serviceMeta(service.name).displayName).join(', ') || 'Диагностика',
 			price: selectedServices.reduce((sum, service) => sum + service.price, 0),
 			priceFrom: false,
 			problem: payload.problemDescription,
-			status: 'Created',
+			status: 'PendingContact',
 			createdAt: new Date().toISOString(),
 			preferredVisitAt: payload.preferredVisitAt
 		});
-		return { id: orderId, requiresEmailConfirmation: true, number, status: 'Created' };
+		return {
+			id: orderId,
+			orderNumber,
+			requiresContactConfirmation: true,
+			messengerLink: {
+				channel: 'Vk',
+				url: 'https://vk.me/pro_phone_demo',
+				expiresAtUtc: new Date(Date.now() + 15 * 60_000).toISOString()
+			},
+			status: 'PendingContact'
+		};
 	}
 
 	const result = await request<BackendCreateOrderResponse>('/orders', {
@@ -668,7 +685,6 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 		body: JSON.stringify({
 			name: payload.name,
 			phone: payload.phone,
-			email: payload.email,
 			deviceType: payload.deviceType,
 			deviceManufacturer: payload.deviceManufacturer,
 			deviceModel: payload.deviceModel,
@@ -679,17 +695,20 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 	});
 	return {
 		id: result.id,
-		requiresEmailConfirmation: Boolean(result.requiresEmailConfirmation),
-		number: result.id,
-		status: 'Created'
+		orderNumber: result.orderNumber,
+		requiresContactConfirmation: Boolean(result.requiresContactConfirmation),
+		messengerLink: result.messengerLink
+			? {
+					channel: 'Vk',
+					url: result.messengerLink.url,
+					expiresAtUtc: result.messengerLink.expiresAtUtc
+				}
+			: null,
+		status: null
 	};
 }
 
-export async function changeOrderStatus(
-	orderId: string,
-	next: RepairStatus,
-	comment?: string
-): Promise<void> {
+export async function changeOrderStatus(orderId: string, next: RepairStatus): Promise<void> {
 	if (isMockMode) {
 		await delay(300);
 		const order = orders.find((item) => item.id === orderId);
@@ -703,13 +722,18 @@ export async function changeOrderStatus(
 		order.status = next;
 		order.statusTimeline = [
 			...(order.statusTimeline ?? []),
-			{ status: next, changedAt: new Date().toISOString(), comment: comment ?? null }
+			{
+				status: next,
+				statusName: statusLabels[next],
+				changedAt: new Date().toISOString(),
+				comment: null
+			}
 		];
 		return;
 	}
 	await request<void>(`/orders/${encodeURIComponent(orderId)}/status`, {
 		method: 'PATCH',
-		body: JSON.stringify({ status: next, comment })
+		body: JSON.stringify({ status: next })
 	});
 }
 
@@ -775,7 +799,7 @@ export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
 				order.clientName = detail.client?.name ?? detail.contactName ?? null;
 				order.clientPhone = detail.client?.phone ?? null;
 				order.timeline = detail.statusTimeline.map((history) => ({
-					label: statusLabels[history.status],
+					label: history.statusName || statusLabels[history.status],
 					at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 				}));
 			} catch {
@@ -800,7 +824,7 @@ export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {
 	mapped.clientName = detail.client?.name ?? detail.contactName ?? null;
 	mapped.clientPhone = detail.client?.phone ?? null;
 	mapped.timeline = detail.statusTimeline.map((history) => ({
-		label: statusLabels[history.status],
+		label: history.statusName || statusLabels[history.status],
 		at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 	}));
 	return mapped;
