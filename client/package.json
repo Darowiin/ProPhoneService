@@ -27,7 +27,8 @@
   },
   "imports": {
     "#lib": "./src/lib/index.ts",
-    "#lib/*": "./src/lib/*"
+    "#lib/*": "./src/lib/*",
+    "#config/*": "./src/config/*"
   },
   "dependencies": {
     "chart.js": "^4.5.1"
