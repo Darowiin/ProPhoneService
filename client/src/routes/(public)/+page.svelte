@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
-	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, heroTrust, heroBadge, getWorkshopStatus } from '../../mocks/db.ts';
+	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, getWorkshopStatus } from '../../mocks/db.ts';
 	import YandexWidgets from '#lib/components/YandexWidgets.svelte';
 	import { yandexWidgets } from '#config/yandex-widgets.ts';
 
@@ -38,44 +38,23 @@
 				<Button href="/request" size="lg">Оставить заявку ↗</Button>
 				<Button href="/price" variant="secondary" size="lg">Посмотреть цены</Button>
 			</div>
-			<ul class="hero__trust">
-				{#each heroTrust as item (item.title)}
-					<li class="trust-item">
-						<span class="trust-item__check" aria-hidden="true">
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-								<path
-									d="m5 12.5 4.5 4.5L19 7.5"
-									stroke="currentColor"
-									stroke-width="2.4"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-						</span>
-						{item.title}
-					</li>
-				{/each}
-			</ul>
+			<dl class="hero__metrics">
+				<div class="hero__metric">
+					<dd class="hero__metric-value">5 лет</dd>
+					<dt class="hero__metric-label">чиним телефоны</dt>
+				</div>
+				<div class="hero__metric">
+					<dd class="hero__metric-value">4 500+</dd>
+					<dt class="hero__metric-label">устройств спасено</dt>
+				</div>
+				<div class="hero__metric">
+					<dd class="hero__metric-value">4.0/5</dd>
+					<dt class="hero__metric-label">оценка на Яндекс</dt>
+				</div>
+			</dl>
 		</div>
 		<div class="hero__photo">
 			<img src="/hero.jpg" alt="Мастер ремонтирует телефон в мастерской" />
-			<div class="hero__badge">
-				<span class="hero__badge-icon" aria-hidden="true">
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-						<path
-							d="M12 3 5 5.5V12c0 4.4 3 7.4 7 9 4-1.6 7-4.6 7-9V5.5L12 3Z"
-							stroke="currentColor"
-							stroke-width="1.8"
-							stroke-linejoin="round"
-						/>
-						<path d="m9 12 2.2 2.2L15.5 9.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-					</svg>
-				</span>
-				<div class="hero__badge-text">
-					<p class="hero__badge-title">{heroBadge.title}</p>
-					<p class="hero__badge-subtitle">{heroBadge.subtitle}</p>
-				</div>
-			</div>
 		</div>
 	</div>
 
@@ -268,24 +247,23 @@
 		margin-top: 28px;
 	}
 
-	.hero__trust {
+	.hero__metrics {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 10px;
-		margin-top: 32px;
+		gap: 36px;
+		margin: 32px 0 0;
 	}
 
-	.trust-item {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 14px;
-		font-weight: 500;
+	.hero__metric-value {
+		font-size: 20px;
+		font-weight: 700;
+		letter-spacing: -0.01em;
 	}
 
-	.trust-item__check {
-		color: var(--success);
-		display: inline-flex;
+	.hero__metric-label {
+		font-size: 12px;
+		color: var(--muted);
+		margin-top: 2px;
 	}
 
 	.hero__photo {
@@ -299,42 +277,6 @@
 		border-radius: 20px;
 	}
 
-	.hero__badge {
-		position: absolute;
-		left: -12px;
-		bottom: 24px;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		background: var(--surface);
-		border-radius: 14px;
-		box-shadow: var(--shadow-card);
-		padding: 14px 18px;
-		max-width: 320px;
-	}
-
-	.hero__badge-icon {
-		width: 40px;
-		height: 40px;
-		border-radius: 10px;
-		background: var(--accent-soft);
-		color: var(--accent);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
-	.hero__badge-title {
-		font-size: 14px;
-		font-weight: 600;
-	}
-
-	.hero__badge-subtitle {
-		font-size: 12px;
-		color: var(--muted);
-		margin-top: 2px;
-	}
 
 	.hero__location {
 		display: grid;
