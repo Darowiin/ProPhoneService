@@ -29,7 +29,7 @@
 <section class="hero">
 	<div class="container hero__inner">
 		<div class="hero__content">
-			<Eyebrow dot tone="muted">Ремонт телефонов на Покровке</Eyebrow>
+			<Eyebrow dot tone="muted">Ремонт телефонов — мастерская рядом</Eyebrow>
 			<h1 class="hero__title">Телефон снова в деле.<br /><span class="hero__title-accent">Вы — на связи.</span></h1>
 			<p class="hero__subtitle">
 				Сломался телефон? Оставьте заявку без звонка. Узнайте цену заранее и отслеживайте ремонт онлайн.

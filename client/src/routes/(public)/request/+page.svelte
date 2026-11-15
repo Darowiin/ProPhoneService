@@ -36,6 +36,8 @@
 	let touched = $state<Record<string, boolean>>({});
 	let apiFieldErrors = $state<Record<string, string>>({});
 	let submitting = $state(false);
+	/** Утверждённый сценарий недоступности мессенджера: повторить позже или оформить лично. */
+	let messengerUnavailable = $state(false);
 
 	const device = $derived(devices.find((item) => item.id === deviceId) ?? null);
 	const deviceManufacturer = $derived(
@@ -238,10 +240,16 @@
 				}
 			}
 			if (!mappedFieldError) {
-				showToast(
-					error instanceof Error ? error.message : 'Не удалось отправить заявку. Попробуйте ещё раз.',
-					'error'
-				);
+				if (error instanceof ApiError && error.status === 503) {
+					// Мессенджер недоступен (утверждённый текст из карточки 14):
+					// повторить попытку позже или оформить заказ лично.
+					messengerUnavailable = true;
+				} else {
+					showToast(
+						error instanceof Error ? error.message : 'Не удалось отправить заявку. Попробуйте ещё раз.',
+						'error'
+					);
+				}
 			}
 			submitting = false;
 
@@ -430,6 +438,21 @@
 				></textarea>
 				<span class="hint">Необязательно — максимум 2000 символов.</span>
 			</div>
+
+			{#if messengerUnavailable}
+				<div class="offline-note" role="alert">
+					<p class="offline-note__title">Мессенджер временно недоступен</p>
+					<p class="offline-note__text">
+						К сожалению, сейчас не удаётся отправить сообщение через мессенджер.
+						Вы можете повторить попытку позже или оформить заявку лично в нашем
+						пункте обслуживания ({workshop.address}).
+					</p>
+					<p class="offline-note__text">Приносим извинения за неудобства!</p>
+					<button class="offline-note__retry" type="button" onclick={() => (messengerUnavailable = false)}>
+						Повторить попытку
+					</button>
+				</div>
+			{/if}
 
 			<Button type="submit" size="lg" disabled={!formValid || submitting}>
 				{submitting ? 'Отправляем…' : 'Отправить заявку'}
@@ -832,5 +855,34 @@
 		.field-row {
 			grid-template-columns: 1fr;
 		}
+	}
+
+	.offline-note {
+		margin-top: 16px;
+		background: var(--warning-soft);
+		border-radius: 12px;
+		padding: 14px 16px;
+		font-size: 13px;
+		line-height: 1.55;
+	}
+
+	.offline-note__title {
+		font-weight: 700;
+		margin-bottom: 6px;
+	}
+
+	.offline-note__text {
+		color: var(--muted);
+	}
+
+	.offline-note__retry {
+		margin-top: 10px;
+		font-size: 13px;
+		color: var(--accent);
+	}
+
+	.offline-note__retry:hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
 	}
 </style>
