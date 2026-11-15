@@ -38,20 +38,6 @@
 				<Button href="/request" size="lg">Оставить заявку ↗</Button>
 				<Button href="/price" variant="secondary" size="lg">Посмотреть цены</Button>
 			</div>
-			<dl class="hero__metrics">
-				<div class="hero__metric">
-					<dd class="hero__metric-value">5 лет</dd>
-					<dt class="hero__metric-label">чиним телефоны</dt>
-				</div>
-				<div class="hero__metric">
-					<dd class="hero__metric-value">4 500+</dd>
-					<dt class="hero__metric-label">устройств спасено</dt>
-				</div>
-				<div class="hero__metric">
-					<dd class="hero__metric-value">4.0/5</dd>
-					<dt class="hero__metric-label">оценка на Яндекс</dt>
-				</div>
-			</dl>
 		</div>
 		<div class="hero__photo">
 			<img src="/hero.jpg" alt="Мастер ремонтирует телефон в мастерской" />
@@ -247,24 +233,6 @@
 		margin-top: 28px;
 	}
 
-	.hero__metrics {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 36px;
-		margin: 32px 0 0;
-	}
-
-	.hero__metric-value {
-		font-size: 20px;
-		font-weight: 700;
-		letter-spacing: -0.01em;
-	}
-
-	.hero__metric-label {
-		font-size: 12px;
-		color: var(--muted);
-		margin-top: 2px;
-	}
 
 	.hero__photo {
 		position: relative;
