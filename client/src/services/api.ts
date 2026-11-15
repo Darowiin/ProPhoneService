@@ -741,6 +741,8 @@ export async function changeOrderStatus(orderId: string, next: RepairStatus): Pr
 
 export interface AccountOrderDto {
 	id: string;
+	/** Человеческий номер заявки (З-000001) из API. */
+	orderNumber: string;
 	clientName: string | null;
 	clientPhone: string | null;
 	device: string;
@@ -761,11 +763,12 @@ function mapMeOrder(raw: BackendOrderListItemLike): AccountOrderDto {
 		device: [raw.device.manufacturer, raw.device.model].filter(Boolean).join(' '),
 		repair: 'Диагностика',
 		createdAt: raw.createdAt,
+		orderNumber: raw.orderNumber ?? raw.id,
 		status: (raw.status as AccountOrderDto['status']) ?? 'Ready',
 		price: 0,
 		expectedReady: null,
 		timeline: (raw.statusTimeline ?? []).map((history) => ({
-			label: statusLabels[history.status],
+			label: history.statusName || statusLabels[history.status],
 			at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
 		}))
 	};
@@ -773,6 +776,7 @@ function mapMeOrder(raw: BackendOrderListItemLike): AccountOrderDto {
 
 interface BackendOrderListItemLike {
 	id: string;
+	orderNumber: string;
 	status: string | null;
 	device: { manufacturer: string; model: string };
 	createdAt: string;
@@ -783,7 +787,11 @@ interface BackendOrderListItemLike {
 export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
 	if (isMockMode) {
 		await delay();
-		return accountMock.orders.map((order) => ({ ...order, timeline: [...order.timeline] }));
+		return accountMock.orders.map((order, index) => ({
+			...order,
+			orderNumber: `З-${String(1048 - index).padStart(6, '0')}`,
+			timeline: [...order.timeline]
+		}));
 	}
 
 	const items = await request<BackendOrderListItemLike[]>('/me/orders');
@@ -815,10 +823,10 @@ export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {
 		await delay();
 		const order = accountMock.orders.find((item) => item.id === id);
 		if (!order) throw new ApiError('Заявка не найдена', 404);
-		return { ...order, timeline: [...order.timeline] };
+		return { ...order, orderNumber: `З-${String(1048).padStart(6, '0')}`, timeline: [...order.timeline] };
 	}
 	const detail = await request<BackendOrderDetailDto>(`/me/orders/${encodeURIComponent(id)}`);
-	const mapped = mapMeOrder({ id: detail.id, status: detail.status, device: detail.device, createdAt: detail.createdAt, statusTimeline: detail.statusTimeline });
+	const mapped = mapMeOrder({ id: detail.id, orderNumber: detail.orderNumber, status: detail.status, device: detail.device, createdAt: detail.createdAt, statusTimeline: detail.statusTimeline });
 	mapped.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
 	mapped.price = Number(detail.totalPrice);
 	mapped.clientName = detail.client?.name ?? detail.contactName ?? null;

@@ -4,11 +4,20 @@
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import { session } from '#lib/auth/session.svelte.ts';
-	import { maskEmail } from '../../../../services/auth.ts';
+	import { isPhone } from '../../../../services/auth.ts';
 	import { isMockMode } from '../../../../services/api.ts';
 
+	// Ссылка привязки и телефон приходят из ответа POST /api/orders (карточка 2 бека).
 	const orderId = $derived(page.url.searchParams.get('id') ?? '');
-	const email = $derived(page.url.searchParams.get('email') ?? '');
+	const orderNumber = $derived(page.url.searchParams.get('number') ?? '');
+	const phoneParam = $derived(page.url.searchParams.get('phone') ?? '');
+	const linkParam = $derived(page.url.searchParams.get('link') ?? '');
+	const expiresParam = $derived(page.url.searchParams.get('expires') ?? '');
+
+	const phone = $derived(isPhone(phoneParam) ? phoneParam : '');
+	const messengerUrl = $derived(linkParam || (isMockMode ? 'https://vk.me/pro_phone_demo' : ''));
+	const linkExpiresAt = $derived(expiresParam ? new Date(expiresParam) : null);
+	const linkFresh = $derived(!linkExpiresAt || linkExpiresAt.getTime() > Date.now());
 
 	let code = $state('');
 	let busy = $state(false);
@@ -48,7 +57,6 @@
 		input.value = clean;
 		code = code.slice(0, index) + clean + code.slice(index + 1);
 		if (clean && index < 5) inputs[index + 1]?.focus();
-		if (/^\d{6}$/.test(code)) void confirm();
 	}
 
 	function onKeyDown(event: KeyboardEvent, index: number): void {
@@ -58,14 +66,30 @@
 		}
 	}
 
+	// Автоотмена без подтверждения — 5 минут с момента создания заявки
+	// (PendingOrderExpirationService на беке); предупреждает только экран.
+	const deadline = $derived(Number(page.url.searchParams.get('created') ?? Date.now() + 5 * 60_000));
+	let leftSeconds = $state(300);
+
+	$effect(() => {
+		const timer = setInterval(() => {
+			leftSeconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+		}, 1000);
+		return () => clearInterval(timer);
+	});
+
+	const leftText = $derived(
+		`${Math.floor(leftSeconds / 60)}:${String(leftSeconds % 60).padStart(2, '0')}`
+	);
+
 	function validate(): boolean {
 		formError = '';
-		if (!orderId) {
+		if (!orderId || !phone) {
 			goto('/request');
 			return false;
 		}
 		if (!/^\d{6}$/.test(code)) {
-			formError = 'Введите 6 цифр из письма.';
+			formError = 'Введите 6 цифр из VK-сообщения.';
 			return false;
 		}
 		return true;
@@ -75,13 +99,13 @@
 		if (busy || !validate()) return;
 		busy = true;
 		try {
-			const authSession = await session.confirm(email.trim(), code);
+			const authSession = await session.confirm(phone, code);
 			if (authSession.role === 'Master') {
 				goto('/master/orders');
 				return;
 			}
-			// Карточка 20: заявка активирована — ведём в ЛК, где видна история и статус.
-			goto('/request/success?id=' + encodeURIComponent(orderId));
+			// Заявка активирована: ведём в ЛК с номером и тайм-лайном.
+			goto(`/request/success?id=${encodeURIComponent(orderId)}&number=${encodeURIComponent(orderNumber)}`);
 		} catch (error) {
 			formError = error instanceof Error ? error.message : 'Неверный код. Попробуйте ещё раз.';
 			code = '';
@@ -98,7 +122,7 @@
 			return;
 		}
 		try {
-			await session.requestCode(email.trim());
+			await session.requestCode(phone);
 			startResendTimer();
 		} catch (error) {
 			formError = error instanceof Error ? error.message : 'Не удалось отправить код повторно.';
@@ -107,50 +131,93 @@
 </script>
 
 <section class="container section confirm">
-	<div class="card">
-		<Eyebrow>Заявка принята</Eyebrow>
-		<h1 class="title">Подтвердите почту</h1>
-		<p class="lead">
-			Отправили одноразовый код на <strong>{maskEmail(email) || 'указанную почту'}</strong>.
-			Введёте его — заявка активируется, и вы отследите её в личном кабинете.
-		</p>
+	<div class="confirm__grid">
+		<div class="card">
+			<Eyebrow>Заявка {orderNumber ? `№${orderNumber}` : 'принята'}</Eyebrow>
+			<h1 class="title">Осталось ввести код</h1>
+			<p class="lead">
+				Мы отправили одноразовый код в VK на <strong>{phone || 'ваш номер'}</strong>.
+				Введите его — заявка активируется, и вы отследите её в личном кабинете.
+			</p>
 
-		<div class="code-group" aria-label="Код из 6 цифр">
-			{#each ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as c, i (c)}
-				<input
-					class="code-input"
-					type="text"
-					inputmode="numeric"
-					maxlength="1"
-					autocomplete="one-time-code"
-					aria-label={"Цифра " + (i + 1)}
-					oninput={(e) => onCodeInput(e, i)}
-					onkeydown={(e) => onKeyDown(e, i)}
-					use:updateRef={i}
-				/>
-			{/each}
-		</div>
+			<div class="code-group" aria-label="Код из 6 цифр">
+				{#each ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'] as c, i (c)}
+					<input
+						class="code-input"
+						type="text"
+						inputmode="numeric"
+						maxlength="1"
+						autocomplete="one-time-code"
+						aria-label={"Цифра " + (i + 1)}
+						oninput={(e) => onCodeInput(e, i)}
+						onkeydown={(e) => onKeyDown(e, i)}
+						use:updateRef={i}
+					/>
+				{/each}
+			</div>
 
-		{#if formError}
-			<p class="form-error" role="alert">{formError}</p>
-		{/if}
-
-		<div class="submit">
-			<Button type="button" size="lg" disabled={!/^\d{6}$/.test(code) || busy} onclick={() => confirm()}>
-				{busy ? 'Проверяем…' : 'Подтвердить заявку'}
-			</Button>
-		</div>
-
-		<div class="links">
-			{#if isMockMode || resendAfter <= 0}
-				<button class="link-action" type="button" onclick={resend}>Отправить код повторно</button>
-			{:else}
-				<span class="link-muted">Отправить код повторно через 00:{String(resendAfter).padStart(2, '0')}</span>
+			{#if formError}
+				<p class="form-error" role="alert">{formError}</p>
 			{/if}
-			<button class="link-action link-action--muted" type="button" onclick={() => goto('/request')}>
-				← Вернуться к заявке
-			</button>
+
+			<div class="submit">
+				<Button type="button" size="lg" disabled={!/^\d{6}$/.test(code) || busy} onclick={() => confirm()}>
+					{busy ? 'Проверяем…' : 'Подтвердить заявку'}
+				</Button>
+			</div>
+
+			<div class="links">
+				{#if isMockMode || resendAfter <= 0}
+					<button class="link-action" type="button" onclick={resend}>Отправить код повторно</button>
+				{:else}
+					<span class="link-muted">Отправить код повторно через 00:{String(resendAfter).padStart(2, '0')}</span>
+				{/if}
+				<button class="link-action link-action--muted" type="button" onclick={() => goto('/request')}>
+					← Вернуться к заявке
+				</button>
+			</div>
 		</div>
+
+		<aside class="messenger">
+			<div class="messenger__card">
+				<h2 class="messenger__title">Что в мессенджере</h2>
+				<ol class="messenger__steps">
+					<li>Откройте диалог сообщества «про телефон» в VK.</li>
+					<li>Отправьте любое сообщение боту — это привяжет ваш телефон.</li>
+					<li>Получите код и введите его на этом экране.</li>
+				</ol>
+
+				<a
+					class="messenger__open"
+					href={messengerUrl || '#'}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-disabled={!messengerUrl || !linkFresh}
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+						<path
+							d="M12 2C6.48 2 2 6.48 2 12c0 5 3.66 9.13 8.44 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.23.19 2.23.19v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.45 2.89h-2.33v6.99C18.34 21.13 22 17 22 12c0-5.52-4.48-10-10-10z"
+							fill="currentColor"
+						/>
+					</svg>
+					Открыть VK
+				</a>
+
+				<div class="messenger__note">
+					<strong>5 минут на подтверждение</strong>
+					<p>
+						Если не подтвердить заявку за {leftText} — она автоматически отменится.
+						Отдельное сообщение об отмене не придёт, просто оформите заявку заново.
+					</p>
+				</div>
+
+				{#if !linkFresh}
+					<p class="messenger__expired">
+						Срок действия ссылки привязки истёк — запросите код повторно.
+					</p>
+				{/if}
+			</div>
+		</aside>
 	</div>
 </section>
 
@@ -161,13 +228,21 @@
 		padding-block: 40px 72px;
 	}
 
-	.card {
-		max-width: 560px;
+	.confirm__grid {
+		display: grid;
+		grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+		gap: 24px;
+		align-items: start;
+		max-width: 980px;
 		width: 100%;
+	}
+
+	.card,
+	.messenger__card {
 		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: 24px;
-		padding: 40px;
+		padding: 36px;
 	}
 
 	.title {
@@ -251,5 +326,68 @@
 	.link-action--muted:hover {
 		text-decoration: underline;
 		text-underline-offset: 3px;
+	}
+
+	.messenger__title {
+		font-size: 18px;
+		font-weight: 700;
+	}
+
+	.messenger__steps {
+		margin: 14px 0 0;
+		padding-left: 18px;
+		display: grid;
+		gap: 10px;
+		color: var(--muted);
+		font-size: 14px;
+		line-height: 1.5;
+	}
+
+	.messenger__open {
+		margin-top: 18px;
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 22px;
+		border-radius: 12px;
+		background: var(--accent);
+		color: #fff;
+		font-size: 14px;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.messenger__open:hover {
+		filter: brightness(1.08);
+	}
+
+	.messenger__note {
+		margin-top: 18px;
+		background: var(--warning-soft);
+		border-radius: 12px;
+		padding: 12px 16px;
+		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	.messenger__note strong {
+		display: block;
+		margin-bottom: 4px;
+	}
+
+	.messenger__note p {
+		color: var(--muted);
+	}
+
+	.messenger__expired {
+		margin-top: 12px;
+		font-size: 13px;
+		color: var(--danger);
+	}
+
+	@media (max-width: 720px) {
+		.confirm__grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

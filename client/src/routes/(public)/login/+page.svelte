@@ -4,15 +4,32 @@
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import { session } from '#lib/auth/session.svelte.ts';
-	import { isEmail, maskEmail } from '../../../services/auth.ts';
+	import { isPhone } from '../../../services/auth.ts';
 	import { showToast } from '#lib/components/toast.svelte.ts';
 	import { ApiError, isMockMode } from '../../../services/api.ts';
 
 	// ?next=/account or /master/orders after a guard redirect.
 	const next = $derived(page.url.searchParams.get('next') ?? null);
 
-	let step = $state<'email' | 'code'>('email');
-	let email = $state('');
+	let step = $state<'phone' | 'code'>('phone');
+	let phone = $state('');
+	let phoneDigits = $derived(phone.replace(/\D/g, ''));
+
+	/** Телефонная маска: +7 (916) 234-56-78. */
+	function formatPhone(raw: string): string {
+		let digits = raw.replace(/\D/g, '');
+		if (digits.startsWith('8')) digits = `7${digits.slice(1)}`;
+		if (!digits.startsWith('7')) digits = `7${digits}`;
+		digits = digits.slice(0, 11);
+		const rest = digits.slice(1);
+		let output = '+7';
+		if (rest.length > 0) output += ` (${rest.slice(0, 3)}`;
+		if (rest.length >= 3) output += ')';
+		if (rest.length > 3) output += ` ${rest.slice(3, 6)}`;
+		if (rest.length > 6) output += `-${rest.slice(6, 8)}`;
+		if (rest.length > 8) output += `-${rest.slice(8, 10)}`;
+		return output;
+	}
 	let code = $state('');
 	let busy = $state(false);
 	let formError = $state('');
@@ -48,20 +65,20 @@
 		if (step === 'code' && /^\d{6}$/.test(code)) void submitCode();
 	});
 
-	function validateEmail(): boolean {
+	function validatePhone(): boolean {
 		formError = '';
-		if (!isEmail(email)) {
-			formError = 'Укажите действующую почту.';
+		if (!isPhone(`+7${phoneDigits.slice(1)}`)) {
+			formError = 'Укажите телефон в формате +7 (XXX) XXX-XX-XX.';
 			return false;
 		}
 		return true;
 	}
 
 	async function sendCode(): Promise<void> {
-		if (busy || !validateEmail()) return;
+		if (busy || !validatePhone()) return;
 		busy = true;
 		try {
-			await session.requestCode(email.trim());
+			await session.requestCode(`+7${phoneDigits.slice(1)}`);
 			step = 'code';
 			formError = '';
 			code = '';
@@ -98,7 +115,7 @@
 		busy = true;
 		formError = '';
 		try {
-			const authSession = await session.confirm(email.trim(), code);
+			const authSession = await session.confirm(`+7${phoneDigits.slice(1)}`, code);
 			if (authSession.role === 'Master') {
 				showToast('Вход мастера выполнен');
 				goto(next ?? '/master/orders');
@@ -114,8 +131,8 @@
 		}
 	}
 
-	function backToEmail(): void {
-		step = 'email';
+	function backToPhone(): void {
+		step = 'phone';
 		formError = '';
 		code = '';
 	}
@@ -126,7 +143,7 @@
 		<div class="card">
 			<Eyebrow>Личный кабинет</Eyebrow>
 
-			{#if step === 'email'}
+			{#if step === 'phone'}
 				<h1 class="title">Рады вас видеть снова</h1>
 				<p class="lead">Войдите, чтобы следить за ремонтом и видеть историю обращений.</p>
 
@@ -134,14 +151,15 @@
 				<p class="form-note">Пароль не нужен — отправим вам код.</p>
 
 				<div class="field">
-					<label class="label" for="email">Почта</label>
+					<label class="label" for="phone">Телефон</label>
 					<input
-						id="email"
+						id="phone"
 						class="input"
-						class:input--error={formError.includes('почту')}
-						type="email"
-						placeholder="anna@example.com"
-						bind:value={email}
+						class:input--error={formError.includes('телефон')}
+						inputmode="tel"
+						placeholder="+7 (___) ___-__-__"
+						value={phone}
+						oninput={(e) => (phone = formatPhone((e.currentTarget as HTMLInputElement).value))}
 						onkeydown={(e) => e.key === 'Enter' && sendCode()}
 					/>
 				</div>
@@ -160,21 +178,21 @@
 					{#if isMockMode}
 						Демо-режим: код вернём прямо в уведомлении — бэкенд не поднят.
 					{:else}
-						Пришлём одноразовый код на эту почту. Отдельная регистрация не нужна: кабинет
-						создаётся вместе с заявкой на ремонт.
+						Пришлём одноразовый код в VK по номеру телефона. Отдельная регистрация не
+						нужна: кабинет создаётся вместе с заявкой на ремонт.
 					{/if}
 				</p>
 				<p class="hint">
 					Ещё нет кабинета? <a class="hint-link" href="/request">Оформите заявку</a> — код придёт
-					на эту почту, и вы войдёте сразу после подтверждения.
+					в VK, и вы войдёте сразу после подтверждения.
 				</p>
 			{:else}
 				<h1 class="title">Осталось ввести код</h1>
-				<p class="lead">Подтвердите почту, чтобы продолжить в личный кабинет.</p>
+				<p class="lead">Подтвердите телефон, чтобы продолжить в личный кабинет.</p>
 
-				<h2 class="form-title">Подтверждение почты</h2>
+				<h2 class="form-title">Подтверждение телефона</h2>
 				<p class="form-note">
-					Отправили код на <strong>{maskEmail(email)}</strong>
+					Отправили код в VK на <strong>{phone}</strong>
 				</p>
 
 				<div class="code-group" aria-label="Код из 6 цифр">
@@ -217,7 +235,7 @@
 					{:else}
 						<button class="action" type="button" onclick={resendCode}>Отправить код повторно</button>
 					{/if}
-					<button class="action" type="button" onclick={backToEmail}>← Вернуться к вводу почты</button>
+					<button class="action" type="button" onclick={backToPhone}>← Вернуться к вводу телефона</button>
 				</div>
 			{/if}
 		</div>

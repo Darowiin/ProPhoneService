@@ -1,19 +1,22 @@
-// Auth service — passwordless email-code sign in per sprint-2 card 1:
-//   POST /api/auth/request-code {email}        → 204
-//   POST /api/auth/confirm {email, code}       → 200 {accessToken, role, clientId, ...}
+// Auth service — passwordless phone-code sign in via VK (sprint 3):
+//   POST /api/auth/request-code {phone}        → 204
+//   POST /api/auth/confirm {phone, code}       → 200 {accessToken, role, clientId, ...}
 //   POST /api/auth/refresh                     → new access token (HttpOnly refresh cookie)
 // Authorization: Bearer <accessToken>; refresh token rides an HttpOnly cookie
 // that the browser attaches automatically on same-origin requests.
 //
 // In mock mode (or while endpoints answer 404/405) the flow works without a
 // backend: request-code succeeds instantly and the code is shown in the UI.
+// VK is the only channel; a guest binds it through messengerLink from the
+// order creation response.
 
 import { ApiError, isMockMode, request } from './api.ts';
 
 export type AccountRole = 'Client' | 'Master';
 
 export interface AuthSession {
-	email: string;
+	/** Телефон аккаунта (VK-привязка задаётся сервером по этому контакту). */
+	phone: string;
 	role: AccountRole;
 	clientId: string | null;
 	/** JWT access token; memory-only — it never reaches localStorage. */
@@ -28,8 +31,13 @@ const delay = (ms = 250) => {
 	return promise;
 };
 
-export function isEmail(identity: string): boolean {
-	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity.trim());
+export function isPhone(phone: string): boolean {
+	return /^\+7\d{10}$/.test(phone.trim());
+}
+
+/** Маска для экрана кода: +7 (916) 234-56-78 печатается как есть. */
+export function maskPhone(phone: string): string {
+	return phone.trim();
 }
 
 /** Mask for the code screen: a**@mail.ru */
@@ -42,30 +50,30 @@ export function maskEmail(email: string): string {
 
 // ─── Requests ───────────────────────────────────────────────────────────────
 
-// The email is not present in the refresh response; keep the last known one.
-let currentEmail: string | null = null;
-export function rememberEmail(email: string): void {
-	currentEmail = email;
+// The phone is not present in the refresh response; keep the last known one.
+let currentPhone: string | null = null;
+export function rememberPhone(phone: string): void {
+	currentPhone = phone;
 }
 
-export async function requestCode(email: string): Promise<void> {
+export async function requestCode(phone: string): Promise<void> {
 	if (isMockMode) {
 		await delay(300);
 		return;
 	}
 	try {
-		await request<void>('/auth/request-code', { method: 'POST', body: JSON.stringify({ email }) });
+		await request<void>('/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) });
 	} catch (error) {
 		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return;
 		throw error;
 	}
 }
 
-export async function confirm(email: string, code: string): Promise<AuthSession> {
+export async function confirm(phone: string, code: string): Promise<AuthSession> {
 	if (isMockMode) {
 		await delay(400);
 		return {
-			email,
+			phone,
 			role: 'Client',
 			clientId: 'a1f3c2d4-0000-4a01-9c11-000000000000',
 			accessToken: 'mock-access-token',
@@ -78,10 +86,10 @@ export async function confirm(email: string, code: string): Promise<AuthSession>
 		role: AccountRole;
 		accessToken: string;
 		accessTokenExpiresAtUtc: string;
-	}>('/auth/confirm', { method: 'POST', body: JSON.stringify({ email, code }) });
+	}>('/auth/confirm', { method: 'POST', body: JSON.stringify({ phone, code }) });
 
 	return {
-		email,
+		phone,
 		role: res.role,
 		clientId: res.clientId,
 		accessToken: res.accessToken,
@@ -91,11 +99,11 @@ export async function confirm(email: string, code: string): Promise<AuthSession>
 
 /**
  * Refreshes the access token using the HttpOnly refresh cookie.
- * `email` (optional) ties the refreshed session to the persisted identity:
- * the refresh response carries no email itself, so at a cold start the
+ * `phone` (optional) ties the refreshed session to the persisted identity:
+ * the refresh response carries no phone itself, so at a cold start the
  * caller passes the one from storage — never an empty string.
  */
-export async function refresh(email?: string): Promise<AuthSession | null> {
+export async function refresh(phone?: string): Promise<AuthSession | null> {
 	if (isMockMode) return null;
 	try {
 		const res = await request<{
@@ -106,7 +114,7 @@ export async function refresh(email?: string): Promise<AuthSession | null> {
 			accessTokenExpiresAtUtc: string;
 		}>('/auth/refresh', { method: 'POST' });
 		return {
-			email: email ?? currentEmail ?? '',
+			phone: phone ?? currentPhone ?? '',
 			role: res.role,
 			clientId: res.clientId,
 			accessToken: res.accessToken,
