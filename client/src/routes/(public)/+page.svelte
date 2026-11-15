@@ -251,6 +251,7 @@
 		grid-template-columns: 1fr 1fr auto;
 		gap: 32px;
 		align-items: center;
+		margin-top: 40px;
 		padding-block: 0 48px;
 	}
 

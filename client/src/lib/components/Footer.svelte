@@ -22,6 +22,9 @@
 
 		<div class="footer__contacts">
 			<a class="footer__phone" href="tel:+74951204567">{workshop.phone}</a>
+			<a class="footer__telegram" href={workshop.telegramUrl} target="_blank" rel="noreferrer">
+				Написать в Telegram ↗
+			</a>
 		</div>
 	</div>
 
@@ -96,6 +99,11 @@
 		flex-direction: column;
 		align-items: flex-start;
 		gap: 8px;
+	}
+
+	.footer__telegram {
+		font-size: 13px;
+		color: var(--accent);
 	}
 
 	.footer__phone {

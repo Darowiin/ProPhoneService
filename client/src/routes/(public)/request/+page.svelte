@@ -28,6 +28,8 @@
 	let customDevice = $state('');
 	let selectedServiceIds = $state<string[]>([]);
 	let contact = $state('');
+	/** Способ связи из макета V4: Телефон | VK (VK = подтверждение через бота). */
+	let contactChannel = $state<'phone' | 'vk'>('phone');
 	let problemDescription = $state('');
 	let visitDate = $state('');
 	let visitTime = $state('');
@@ -409,24 +411,6 @@
 			</div>
 
 			<div class="field">
-				<label class="label" for="contact">Телефон для связи</label>
-				<input
-					id="contact"
-					class="input"
-					class:input--error={!!fieldError('contact')}
-					inputmode="tel"
-					placeholder="+7 (___) ___-__-__"
-					value={contact}
-					oninput={onContactInput}
-					onblur={() => markTouched('contact')}
-				/>
-				<span class="hint">Пришлём код подтверждения в VK-сообщения этой группе контактов.</span>
-				{#if fieldError('contact')}
-					<span class="error" role="alert">{fieldError('contact')}</span>
-				{/if}
-			</div>
-
-			<div class="field">
 				<label class="label" for="description">Описание проблемы</label>
 				<textarea
 					id="description"
@@ -437,6 +421,54 @@
 					bind:value={problemDescription}
 				></textarea>
 				<span class="hint">Необязательно — максимум 2000 символов.</span>
+			</div>
+
+			<div class="field">
+				<p class="label" id="channel-label">Способ связи</p>
+				<div class="contact-tabs" role="tablist" aria-labelledby="channel-label">
+					<button
+						type="button"
+						class="contact-tab"
+						class:contact-tab--active={contactChannel === 'phone'}
+						role="tab"
+						aria-selected={contactChannel === 'phone'}
+						onclick={() => (contactChannel = 'phone')}
+					>
+						Телефон
+					</button>
+					<button
+						type="button"
+						class="contact-tab"
+						class:contact-tab--active={contactChannel === 'vk'}
+						role="tab"
+						aria-selected={contactChannel === 'vk'}
+						onclick={() => (contactChannel = 'vk')}
+					>
+						VK
+					</button>
+				</div>
+			</div>
+
+			<div class="field">
+				<label class="label" for="contact">{contactChannel === 'vk' ? 'VK на этот номер' : 'Номер телефона'}</label>
+				<input
+					id="contact"
+					class="input"
+					class:input--error={!!fieldError('contact')}
+					inputmode="tel"
+					placeholder="+7 (916) 234-56-78"
+					value={contact}
+					oninput={onContactInput}
+					onblur={() => markTouched('contact')}
+				/>
+				<span class="hint">
+					{contactChannel === 'vk'
+						? 'Код подтверждения придёт в VK-сообщения этого номера.'
+						: 'Только для связи по ремонту. Никаких рекламных сообщений.'}
+				</span>
+				{#if fieldError('contact')}
+					<span class="error" role="alert">{fieldError('contact')}</span>
+				{/if}
 			</div>
 
 			{#if messengerUnavailable}
@@ -884,5 +916,33 @@
 	.offline-note__retry:hover {
 		text-decoration: underline;
 		text-underline-offset: 3px;
+	}
+
+	.contact-tabs {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px;
+		background: var(--bg);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		padding: 5px;
+	}
+
+	.contact-tab {
+		padding: 9px 14px;
+		border-radius: 7px;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--muted);
+		transition: background 0.15s ease, color 0.15s ease;
+	}
+
+	.contact-tab:hover {
+		color: var(--text);
+	}
+
+	.contact-tab--active {
+		background: var(--accent);
+		color: #fff;
 	}
 </style>
