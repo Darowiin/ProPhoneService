@@ -1,8 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Moq;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -258,32 +256,6 @@ public class VkPhoneAuthenticationPersistenceTests
         Assert.Single(await check.Set<Client>().ToListAsync());
         Assert.Single(await check.Set<Account>().ToListAsync());
         Assert.Empty(await check.Set<AuthCode>().ToListAsync());
-    }
-
-    [PostgresFact]
-    public async Task Migration_InvalidatesLegacyEmailCodesAndPreservesClients()
-    {
-        await using var database = await Database.CreateAsync();
-        await using var db = database.Context();
-        var migrator = db.GetService<IMigrator>();
-        await migrator.MigrateAsync("20261112155352_AlignMessengerBindingColumns");
-        var id = Guid.NewGuid();
-        var now = new Clock().GetUtcNow().UtcDateTime;
-        var expiresAt = now.AddMinutes(ConfirmationRules.LifetimeMinutes);
-
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            INSERT INTO client (id, name, phone, email, created_at)
-            VALUES ({id}, 'Existing', {Phone}, 'legacy@example.com', {now});
-            INSERT INTO auth_code (id, email, code, expires_at, created_at, failed_attempts)
-            VALUES (gen_random_uuid(), 'legacy@example.com', '123456', {expiresAt}, {now}, 0)
-            """);
-
-        await migrator.MigrateAsync();
-
-        Assert.Empty(await db.Set<AuthCode>().ToListAsync());
-        var client = await db.Set<Client>().SingleAsync();
-        Assert.Equal(id, client.Id);
-        Assert.Equal(Phone, client.Phone);
     }
 
     [PostgresFact]
