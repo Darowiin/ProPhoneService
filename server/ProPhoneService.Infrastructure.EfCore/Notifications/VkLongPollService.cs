@@ -10,7 +10,7 @@ namespace ProPhoneService.Infrastructure.EfCore.Notifications;
 /// <summary>
 /// Последовательный опрос сообщества VK с восстановлением сессии и повтором обработки
 /// </summary>
-public class VkLongPollService(IServiceScopeFactory scopeFactory, IHttpClientFactory httpClientFactory,
+public class VkLongPollService(TimeProvider timeProvider, IServiceScopeFactory scopeFactory, IHttpClientFactory httpClientFactory,
     MessengerOptions options, ILogger<VkLongPollService> logger) : BackgroundService
 {
     /// <summary>
@@ -115,7 +115,7 @@ public class VkLongPollService(IServiceScopeFactory scopeFactory, IHttpClientFac
 
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(5), timeProvider, stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {

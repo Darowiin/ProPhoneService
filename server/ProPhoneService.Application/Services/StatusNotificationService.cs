@@ -11,6 +11,7 @@ namespace ProPhoneService.Application.Services;
 /// Доставка уведомлений о сохранённых статусах через VK с повторами и журналом результата
 /// </summary>
 public class StatusNotificationService(
+    TimeProvider timeProvider,
     INotifier notifier,
     IRepository<NotificationLog> notificationRepository,
     NotificationOptions notificationOptions,
@@ -83,7 +84,7 @@ public class StatusNotificationService(
                         var delay = notificationOptions.RetryDelay.TotalMilliseconds * Math.Pow(2, attempts - 1);
                         if (delay > 0)
                         {
-                            await Task.Delay(TimeSpan.FromMilliseconds(delay), cancellationToken);
+                            await Task.Delay(TimeSpan.FromMilliseconds(delay), timeProvider, cancellationToken);
                         }
                     }
                 }

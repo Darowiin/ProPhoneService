@@ -71,7 +71,7 @@ public class OrderNumberPersistenceTests
     {
         var device = new Device { Id = Guid.NewGuid(), Type = DeviceType.Phone, Manufacturer = "Test", Model = "Test" };
         var order = RepairOrder.CreatePending(device.Id, "+79001234567");
-        order.CreatedAt = DateTime.UtcNow;
+        order.CreatedAt = TimeProvider.System.GetUtcNow().UtcDateTime;
         db.AddRange(device, order);
         await db.SaveChangesAsync();
         return order;

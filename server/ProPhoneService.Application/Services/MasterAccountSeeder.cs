@@ -13,6 +13,7 @@ namespace ProPhoneService.Application.Services;
 /// клиент и аккаунт создаются при отсутствии, существующему аккаунту проставляется роль Master
 /// </summary>
 public class MasterAccountSeeder(
+    TimeProvider timeProvider,
     IClientRepository clientRepository,
     IAccountRepository accountRepository,
     IMessengerBindingRepository bindings,
@@ -73,6 +74,8 @@ public class MasterAccountSeeder(
 
         if (binding is null)
         {
+            var now = timeProvider.GetUtcNow().UtcDateTime;
+
             changed = true;
             await bindings.AddAsync(new MessengerBinding
             {
@@ -82,8 +85,8 @@ public class MasterAccountSeeder(
                 Phone = phone,
                 AccountId = account.Id,
                 RecipientId = recipient,
-                LinkedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow,
+                LinkedAt = now,
+                ExpiresAt = now,
             }, cancellationToken);
         }
 

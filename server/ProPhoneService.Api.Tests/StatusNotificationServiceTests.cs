@@ -23,11 +23,11 @@ public class StatusNotificationServiceTests
             .ReturnsAsync(new MessengerBinding
             {
                 Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
-                RecipientId = "42", LinkedAt = DateTime.UtcNow, AccountId = Guid.NewGuid(),
+                RecipientId = "42", LinkedAt = TimeProvider.System.GetUtcNow().UtcDateTime, AccountId = Guid.NewGuid(),
             });
         var logs = new Mock<IRepository<NotificationLog>>();
         logs.Setup(x => x.SaveChangesAsync(It.IsAny<CancellationToken>())).ThrowsAsync(new IOException("db unavailable"));
-        var service = new StatusNotificationService(notifier.Object, logs.Object, new NotificationOptions(),
+        var service = new StatusNotificationService(TimeProvider.System, notifier.Object, logs.Object, new NotificationOptions(),
             NullLogger<StatusNotificationService>.Instance, bindings.Object);
 
         await service.NotifyStatusChangedAsync(order);
@@ -49,10 +49,10 @@ public class StatusNotificationServiceTests
             .ReturnsAsync(new MessengerBinding
             {
                 Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
-                RecipientId = "42", LinkedAt = DateTime.UtcNow, AccountId = Guid.NewGuid(),
+                RecipientId = "42", LinkedAt = TimeProvider.System.GetUtcNow().UtcDateTime, AccountId = Guid.NewGuid(),
             });
         var logs = new Mock<IRepository<NotificationLog>>(MockBehavior.Strict);
-        var service = new StatusNotificationService(notifier.Object, logs.Object, new NotificationOptions(),
+        var service = new StatusNotificationService(TimeProvider.System, notifier.Object, logs.Object, new NotificationOptions(),
             NullLogger<StatusNotificationService>.Instance, bindings.Object);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.NotifyStatusChangedAsync(order, cancellation.Token));

@@ -72,7 +72,7 @@ public class AuthEndpointTests
                     var binding = new MessengerBinding
                     {
                         Id = Guid.NewGuid(), TokenHash = "hash", Phone = Phone, Channel = MessengerChannel.Vk,
-                        RecipientId = "42", LinkedAt = _nowUtc.UtcDateTime, ExpiresAt = _nowUtc.UtcDateTime.AddMinutes(5),
+                        RecipientId = "42", LinkedAt = _nowUtc.UtcDateTime, ExpiresAt = _nowUtc.UtcDateTime.AddMinutes(ConfirmationRules.LifetimeMinutes),
                         OrderId = PendingOrders.FirstOrDefault()?.Id,
                         AccountId = PendingOrders.Count == 0 ? Accounts.FirstOrDefault()?.Id : null,
                     };
@@ -216,7 +216,7 @@ public class AuthEndpointTests
         Assert.True(match.Success);
         var savedCode = store.AuthCodes[Phone];
         Assert.Equal(match.Value, savedCode.Code);
-        Assert.Equal(_nowUtc.UtcDateTime.AddMinutes(5), savedCode.ExpiresAt);
+        Assert.Equal(_nowUtc.UtcDateTime.AddMinutes(ConfirmationRules.LifetimeMinutes), savedCode.ExpiresAt);
     }
 
     [Fact]

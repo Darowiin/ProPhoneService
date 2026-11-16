@@ -19,7 +19,7 @@ public static class NotificationMessages
     /// Подставить одноразовый код в утверждённый текст
     /// </summary>
     public static string ConfirmationCode(string code) =>
-        $"Ваш код подтверждения: {code}\nСрок действия кода — 5 минут. Не передавайте его третьим лицам.";
+        $"Ваш код подтверждения: {code}\nСрок действия кода — {ConfirmationRules.LifetimeMinutes} минут. Не передавайте его третьим лицам.";
 
     /// <summary>
     /// Получить заголовок и текст уведомления или null для статуса без отправки

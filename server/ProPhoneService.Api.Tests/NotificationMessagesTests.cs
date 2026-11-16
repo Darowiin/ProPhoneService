@@ -47,7 +47,7 @@ public class NotificationMessagesTests
     {
         var notifier = new Mock<INotifier>(MockBehavior.Strict);
         var logs = new Mock<IRepository<NotificationLog>>(MockBehavior.Strict);
-        var service = new StatusNotificationService(notifier.Object, logs.Object, new NotificationOptions(),
+        var service = new StatusNotificationService(TimeProvider.System, notifier.Object, logs.Object, new NotificationOptions(),
             NullLogger<StatusNotificationService>.Instance, Mock.Of<IMessengerBindingRepository>());
         var order = status == RepairStatus.PendingContact
             ? RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567")

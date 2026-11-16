@@ -169,7 +169,7 @@ public class VkLongPollTests
         using var provider = Services(Mock.Of<IVkUpdateHandler>());
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(x => x.CreateClient("VkLongPoll")).Returns(http);
-        using var worker = new VkLongPollService(provider.GetRequiredService<IServiceScopeFactory>(), factory.Object,
+        using var worker = new VkLongPollService(TimeProvider.System, provider.GetRequiredService<IServiceScopeFactory>(), factory.Object,
             new(), NullLogger<VkLongPollService>.Instance);
 
         await worker.StartAsync(CancellationToken.None);
@@ -202,7 +202,7 @@ public class VkLongPollTests
     {
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(x => x.CreateClient("VkLongPoll")).Returns(http);
-        return new(provider.GetRequiredService<IServiceScopeFactory>(), factory.Object,
+        return new(TimeProvider.System, provider.GetRequiredService<IServiceScopeFactory>(), factory.Object,
             MessengerDeliveryTests.Options(), NullLogger<VkLongPollService>.Instance);
     }
 

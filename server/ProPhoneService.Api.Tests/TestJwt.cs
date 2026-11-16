@@ -65,7 +65,7 @@ internal static class TestJwt
                 new Claim(AuthClaims.ClientId, clientId.ToString()),
                 new Claim(AuthClaims.Role, role.ToString()),
             ],
-            expires: DateTime.UtcNow.AddMinutes(15),
+            expires: TimeProvider.System.GetUtcNow().UtcDateTime.AddMinutes(15),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);

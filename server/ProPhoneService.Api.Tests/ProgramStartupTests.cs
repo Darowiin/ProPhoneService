@@ -32,6 +32,16 @@ public class ProgramStartupTests
         });
 
     [Fact]
+    public void Startup_InvalidTrustedProxyAddress_FailsFast()
+    {
+        using var factory = Factory("Development", host => host.UseSetting("ReverseProxy:KnownProxies", "not-an-ip"));
+
+        var exception = Assert.Throws<InvalidOperationException>(() => factory.CreateClient());
+
+        Assert.Contains("ReverseProxy:KnownProxies", exception.Message);
+    }
+
+    [Fact]
     public void Startup_ProductionWithoutConnectionString_FailsFast()
     {
         using var factory = Factory("Production", host => host.UseSetting("ConnectionStrings:Default", ""));

@@ -50,7 +50,7 @@ public class OrdersEndpointTests
     /// </summary>
     private static (RepairOrder Order, Device Device) MakeOrderWithVisit(RepairStatus status, DateTime? preferredVisitAt)
     {
-        var (order, device) = MakeOrderWithDevice(status, DateTime.UtcNow);
+        var (order, device) = MakeOrderWithDevice(status, TimeProvider.System.GetUtcNow().UtcDateTime);
 
         typeof(RepairOrder).GetProperty(nameof(RepairOrder.PreferredVisitAt))!.SetValue(order, preferredVisitAt);
 

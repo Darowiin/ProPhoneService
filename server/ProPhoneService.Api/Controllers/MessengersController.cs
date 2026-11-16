@@ -17,16 +17,6 @@ namespace ProPhoneService.Api.Controllers;
 public class MessengersController(MessengerBindingService bindings) : ControllerBase
 {
     /// <summary>
-    /// Получить ссылку в бота после создания гостевой заявки
-    /// </summary>
-    [HttpPost("orders/{orderId:guid}/link")]
-    [EnableRateLimiting("messenger-links")]
-    public async Task<IActionResult> CreateOrderLink(Guid orderId, ChannelRequest request, CancellationToken cancellationToken)
-    {
-        return await CreateLink(() => bindings.CreateForOrderAsync(orderId, request.Channel!.Value, cancellationToken));
-    }
-
-    /// <summary>
     /// Получить ссылку в бота для текущего аккаунта
     /// </summary>
     [Authorize]

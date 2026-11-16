@@ -6,11 +6,6 @@ namespace ProPhoneService.Domain.Shared;
 public sealed class AuthOptions
 {
     /// <summary>
-    /// Срок жизни одноразового кода, мин
-    /// </summary>
-    public int CodeLifetimeMinutes { get; set; } = 5;
-
-    /// <summary>
     /// Лимит неверных кодов до блокировки контакта
     /// </summary>
     public int MaxFailedCodeAttempts { get; set; } = 5;

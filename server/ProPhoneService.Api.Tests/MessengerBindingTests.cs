@@ -1,3 +1,4 @@
+using ProPhoneService.Domain.Shared;
 using System.Security.Cryptography;
 using System.Text;
 using Moq;
@@ -40,7 +41,7 @@ public class MessengerBindingTests
         Assert.StartsWith(prefix, response.Url);
         var token = response.Url[prefix.Length..];
         Assert.Equal(64, token.Length);
-        Assert.Equal(order.CreatedAt.AddMinutes(5), response.ExpiresAtUtc);
+        Assert.Equal(order.CreatedAt.AddMinutes(ConfirmationRules.LifetimeMinutes), response.ExpiresAtUtc);
         Assert.NotNull(saved);
         Assert.NotEqual(token, saved.TokenHash);
         Assert.Equal(Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))), saved.TokenHash);
@@ -53,7 +54,7 @@ public class MessengerBindingTests
     {
         var harness = new Harness();
         var order = RepairOrder.CreatePending(Guid.NewGuid(), "+79001234567");
-        order.CreatedAt = _now.UtcDateTime.AddMinutes(-5);
+        order.CreatedAt = _now.UtcDateTime.AddMinutes(-ConfirmationRules.LifetimeMinutes);
         harness.Orders.Setup(x => x.GetByIdAsync(order.Id, It.IsAny<CancellationToken>())).ReturnsAsync(order);
 
         var result = await harness.Service.CreateForOrderAsync(order.Id, MessengerChannel.Vk);

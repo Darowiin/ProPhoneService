@@ -68,7 +68,7 @@ public class ChangeStatusEndpointTests
                         .ReturnsAsync(() => HasBinding ? new MessengerBinding
                         {
                             Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
-                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = DateTime.UtcNow,
+                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = TimeProvider.System.GetUtcNow().UtcDateTime,
                         } : null);
                     services.RemoveAll<IMessengerBindingRepository>();
                     services.AddSingleton(bindings.Object);

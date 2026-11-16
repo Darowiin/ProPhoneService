@@ -9,7 +9,7 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Api.Tests;
 
 /// <summary>
-/// Проверка работы мастер-аккаунтов - мастер-аккаунт заводится апсертом при старте по email из конфигурации
+/// Проверка работы мастер-аккаунтов - мастер-аккаунт заводится апсертом при старте по телефону и доверенному VK ID из конфигурации
 /// </summary>
 public class MasterAccountSeederTests
 {
@@ -25,7 +25,9 @@ public class MasterAccountSeederTests
 
         public MasterAccountSeeder Seeder { get; }
 
-        public ClientStore(string? masterEmail, IEnumerable<Account>? accounts = null)
+        public MessengerBinding? AddedBinding { get; private set; }
+
+        public ClientStore(string? masterPhone, IEnumerable<Account>? accounts = null, TimeProvider? timeProvider = null)
         {
             var accountList = (accounts ?? []).ToList();
 
@@ -53,11 +55,16 @@ public class MasterAccountSeederTests
                 .Callback((Account a, CancellationToken _) => accountList.Add(a))
                 .Returns(Task.CompletedTask);
 
-            Seeder = new MasterAccountSeeder(
+            var bindings = new Mock<IMessengerBindingRepository>();
+            bindings.Setup(x => x.AddAsync(It.IsAny<MessengerBinding>(), It.IsAny<CancellationToken>()))
+                .Callback((MessengerBinding binding, CancellationToken _) => AddedBinding = binding)
+                .Returns(Task.CompletedTask);
+
+            Seeder = new MasterAccountSeeder(timeProvider ?? TimeProvider.System,
                 Repository.Object,
                 Accounts.Object,
-                Mock.Of<IMessengerBindingRepository>(),
-                new AuthOptions { MasterPhone = masterEmail, MasterVkUserId = 42 },
+                bindings.Object,
+                new AuthOptions { MasterPhone = masterPhone, MasterVkUserId = 42 },
                 NullLogger<MasterAccountSeeder>.Instance);
 
             AddedAccounts = accountList;
@@ -82,7 +89,8 @@ public class MasterAccountSeederTests
     [Fact]
     public async Task Ensure_NewMasterPhone_CreatesClientAndMasterAccount()
     {
-        var store = new ClientStore("  +79001234567 ");
+        var clock = new TestTimeProvider(new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero));
+        var store = new ClientStore("  +79001234567 ", timeProvider: clock);
 
         var changed = await store.Seeder.EnsureAsync();
 
@@ -95,6 +103,9 @@ public class MasterAccountSeederTests
         Assert.Equal(client.Id, account.ClientId);
         Assert.Equal(AccountRole.Master, account.Role);
         Assert.Equal(1, store.Saves);
+        Assert.NotNull(store.AddedBinding);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, store.AddedBinding.LinkedAt);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, store.AddedBinding.ExpiresAt);
     }
 
     [Fact]

@@ -24,7 +24,7 @@ public class VkPhoneAuthenticationPersistenceTests
 
     private class Clock : TimeProvider
     {
-        public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset Now { get; set; } = TimeProvider.System.GetUtcNow();
 
         public override DateTimeOffset GetUtcNow() => Now;
     }
@@ -45,7 +45,7 @@ public class VkPhoneAuthenticationPersistenceTests
                 Key = new string('x', 48), Issuer = "tests", Audience = "tests",
             }, new InMemoryRefreshTokenStore(clock), new MessengerBindingRepository(db), Notifications);
 
-        public StatusNotificationService Notifications => new(Notifier(), new EfRepository<NotificationLog>(db),
+        public StatusNotificationService Notifications => new(clock, Notifier(), new EfRepository<NotificationLog>(db),
             new NotificationOptions { RetryDelay = TimeSpan.Zero }, NullLogger<StatusNotificationService>.Instance,
             new MessengerBindingRepository(db));
 
@@ -164,7 +164,7 @@ public class VkPhoneAuthenticationPersistenceTests
         var (expired, token) = await flow.PendingAsync();
         await flow.Callback(token);
         var code = await db.Set<AuthCode>().SingleAsync();
-        clock.Now = clock.Now.AddMinutes(5);
+        clock.Now = clock.Now.AddMinutes(ConfirmationRules.LifetimeMinutes);
         var (fresh, _) = await flow.PendingAsync();
         var messagesBefore = flow.Messages.Count;
         var orders = new RepairOrderRepository(db);
@@ -268,11 +268,14 @@ public class VkPhoneAuthenticationPersistenceTests
         var migrator = db.GetService<IMigrator>();
         await migrator.MigrateAsync("20261112155352_AlignMessengerBindingColumns");
         var id = Guid.NewGuid();
+        var now = new Clock().GetUtcNow().UtcDateTime;
+        var expiresAt = now.AddMinutes(ConfirmationRules.LifetimeMinutes);
+
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO client (id, name, phone, email, created_at)
-            VALUES ({id}, 'Existing', {Phone}, 'legacy@example.com', now());
+            VALUES ({id}, 'Existing', {Phone}, 'legacy@example.com', {now});
             INSERT INTO auth_code (id, email, code, expires_at, created_at, failed_attempts)
-            VALUES (gen_random_uuid(), 'legacy@example.com', '123456', now() + interval '5 minutes', now(), 0)
+            VALUES (gen_random_uuid(), 'legacy@example.com', '123456', {expiresAt}, {now}, 0)
             """);
 
         await migrator.MigrateAsync();
@@ -288,7 +291,7 @@ public class VkPhoneAuthenticationPersistenceTests
     {
         await using var database = await Database.CreateAsync();
         await using var db = database.Context();
-        var seeder = new MasterAccountSeeder(new ClientRepository(db), new AccountRepository(db),
+        var seeder = new MasterAccountSeeder(TimeProvider.System, new ClientRepository(db), new AccountRepository(db),
             new MessengerBindingRepository(db), new AuthOptions { MasterPhone = Phone, MasterVkUserId = 42 },
             NullLogger<MasterAccountSeeder>.Instance);
 

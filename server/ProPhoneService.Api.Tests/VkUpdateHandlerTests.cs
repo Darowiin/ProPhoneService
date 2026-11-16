@@ -1,3 +1,4 @@
+using ProPhoneService.Domain.Shared;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -23,7 +24,7 @@ public class VkUpdateHandlerTests
         var repo = new Mock<IMessengerBindingRepository>();
         repo.Setup(x => x.GetByTokenHashAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new MessengerBinding { Id = Guid.NewGuid(), Phone = "+79001234567", TokenHash = "hash",
-                AccountId = Guid.NewGuid(), Channel = MessengerChannel.Vk, ExpiresAt = DateTime.UtcNow.AddMinutes(5) });
+                AccountId = Guid.NewGuid(), Channel = MessengerChannel.Vk, ExpiresAt = TimeProvider.System.GetUtcNow().UtcDateTime.AddMinutes(ConfirmationRules.LifetimeMinutes) });
         repo.Setup(x => x.TryBindAsync(It.IsAny<string>(), MessengerChannel.Vk, "42", It.IsAny<DateTime>(),
             It.IsAny<CancellationToken>())).ReturnsAsync(true);
         var notifier = new Mock<INotifier>();
@@ -36,7 +37,7 @@ public class VkUpdateHandlerTests
             new AuthService(Mock.Of<IAccountRepository>(), Mock.Of<IClientRepository>(),
                 Mock.Of<IAuthCodeRepository>(), Mock.Of<IRepairOrderRepository>(), notifier.Object,
                 TimeProvider.System, new(), new(), new InMemoryRefreshTokenStore(TimeProvider.System), repo.Object,
-                new StatusNotificationService(notifier.Object, Mock.Of<IRepository<NotificationLog>>(), new(),
+                new StatusNotificationService(TimeProvider.System, notifier.Object, Mock.Of<IRepository<NotificationLog>>(), new(),
                     NullLogger<StatusNotificationService>.Instance, repo.Object)));
         using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
         {

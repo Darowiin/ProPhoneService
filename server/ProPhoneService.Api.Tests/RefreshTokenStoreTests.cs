@@ -10,7 +10,7 @@ public class RefreshTokenStoreTests
     {
         using var store = new InMemoryRefreshTokenStore(TimeProvider.System);
         var account = Guid.NewGuid();
-        var token = store.Issue(account, DateTimeOffset.UtcNow.AddDays(1));
+        var token = store.Issue(account, TimeProvider.System.GetUtcNow().AddDays(1));
         var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var requests = Enumerable.Range(0, 32).Select(async _ =>
         {
@@ -44,7 +44,7 @@ public class RefreshTokenStoreTests
 
     private sealed class ManualTimeProvider : TimeProvider
     {
-        public DateTimeOffset Now { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset Now { get; set; } = TimeProvider.System.GetUtcNow();
         private Action? _tick;
         public override DateTimeOffset GetUtcNow() => Now;
         public void Tick() => _tick!();

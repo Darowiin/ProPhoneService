@@ -1,3 +1,4 @@
+using ProPhoneService.Domain.Shared;
 using Microsoft.EntityFrameworkCore;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Shared.Enum;
@@ -124,7 +125,7 @@ public class RepairOrderRepository(ProPhoneServiceDbContext context)
     /// <inheritdoc />
     public Task<int> CancelExpiredPendingAsync(DateTime nowUtc, CancellationToken cancellationToken = default)
     {
-        var cutoff = nowUtc.AddMinutes(-5);
+        var cutoff = nowUtc.AddMinutes(-ConfirmationRules.LifetimeMinutes);
 
         // Условное обновление и история атомарны; xmin защищает параллельное подтверждение
         return Context.Database.ExecuteSqlInterpolatedAsync($"""

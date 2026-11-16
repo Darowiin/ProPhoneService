@@ -8,7 +8,7 @@ public class RepairStatusTransitionTests
 {
     private static RepairOrder CreateStartedOrder()
     {
-        return RepairOrder.Create(Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow.AddDays(1));
+        return RepairOrder.Create(Guid.NewGuid(), Guid.NewGuid(), TimeProvider.System.GetUtcNow().UtcDateTime.AddDays(1));
     }
 
     public static readonly TheoryData<RepairStatus, RepairStatus> AllowedTransitions = new()
@@ -72,7 +72,7 @@ public class RepairStatusTransitionTests
     [Fact]
     public void Start_WritesInitialHistoryEntry()
     {
-        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PreferredVisitAt = DateTime.UtcNow.AddDays(1) };
+        var order = new RepairOrder { Id = Guid.NewGuid(), ClientId = Guid.NewGuid(), DeviceId = Guid.NewGuid(), PreferredVisitAt = TimeProvider.System.GetUtcNow().UtcDateTime.AddDays(1) };
 
         order.Start();
 
@@ -143,7 +143,7 @@ public class RepairStatusTransitionTests
     {
         if (target == RepairStatus.PendingContact)
         {
-            return RepairOrder.CreatePending(Guid.NewGuid(), null, DateTime.UtcNow.AddDays(1));
+            return RepairOrder.CreatePending(Guid.NewGuid(), null, TimeProvider.System.GetUtcNow().UtcDateTime.AddDays(1));
         }
 
         var order = CreateStartedOrder();

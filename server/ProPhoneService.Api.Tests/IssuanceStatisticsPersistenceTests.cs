@@ -52,7 +52,7 @@ public class IssuanceStatisticsPersistenceTests
         notifier.Setup(x => x.SendAsync(MessengerChannel.Vk, "42", It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .Callback((MessengerChannel _, string _, string text, CancellationToken _) => messages.Add(text))
             .Returns(Task.CompletedTask);
-        var notifications = new StatusNotificationService(notifier.Object, new EfRepository<NotificationLog>(db),
+        var notifications = new StatusNotificationService(TimeProvider.System, notifier.Object, new EfRepository<NotificationLog>(db),
             new NotificationOptions { RetryDelay = TimeSpan.Zero }, NullLogger<StatusNotificationService>.Instance,
             new MessengerBindingRepository(db));
         var workflow = new OrderWorkflowService(new RepairOrderRepository(db), notifications, Mock.Of<IMapper>(),

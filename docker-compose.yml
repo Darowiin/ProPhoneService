@@ -30,6 +30,7 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_HTTP_PORTS: "8080"
       Database__MigrateOnStartup: ${DATABASE_MIGRATE_ON_STARTUP:-true}
+      ReverseProxy__KnownProxies: ${REVERSE_PROXY_KNOWN_PROXIES:-}
     ports:
       - "8080:8080"
     healthcheck:

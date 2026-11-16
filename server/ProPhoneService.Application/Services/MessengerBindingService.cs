@@ -25,11 +25,11 @@ public class MessengerBindingService(IMessengerBindingRepository bindings,
         var order = await orders.GetByIdAsync(orderId, cancellationToken);
 
         if (order is null || order.Status != RepairStatus.PendingContact
-            || order.CreatedAt.AddMinutes(5) <= timeProvider.GetUtcNow().UtcDateTime)
+            || order.CreatedAt.AddMinutes(ConfirmationRules.LifetimeMinutes) <= timeProvider.GetUtcNow().UtcDateTime)
             return null;
 
         return await CreateAsync(order.ContactPhone, channel, order.Id, null,
-            order.CreatedAt.AddMinutes(5), cancellationToken);
+            order.CreatedAt.AddMinutes(ConfirmationRules.LifetimeMinutes), cancellationToken);
     }
 
     /// <summary>
@@ -42,7 +42,7 @@ public class MessengerBindingService(IMessengerBindingRepository bindings,
         var client = account is null ? null : await clients.GetByIdAsync(account.ClientId, cancellationToken);
 
         return client is null ? null : await CreateAsync(client.Phone, channel, null, accountId,
-            timeProvider.GetUtcNow().UtcDateTime.AddMinutes(5), cancellationToken);
+            timeProvider.GetUtcNow().UtcDateTime.AddMinutes(ConfirmationRules.LifetimeMinutes), cancellationToken);
     }
 
     private async Task<MessengerLinkResponse> CreateAsync(string? phone, MessengerChannel channel,

@@ -60,7 +60,7 @@ public class AuthService(
         {
             var order = await orderRepository.GetByIdAsync(pendingId, ct);
 
-            if (order is null || order.Status != RepairStatus.PendingContact || order.CreatedAt.AddMinutes(5) <= now)
+            if (order is null || order.Status != RepairStatus.PendingContact || order.CreatedAt.AddMinutes(ConfirmationRules.LifetimeMinutes) <= now)
             {
                 return AuthOutcome.Failure(400, "Срок подтверждения истёк", "Оформите новую заявку");
             }
@@ -94,7 +94,7 @@ public class AuthService(
 
         authCode.Code = code;
         authCode.BindingId = binding.Id;
-        authCode.ExpiresAt = now.AddMinutes(5);
+        authCode.ExpiresAt = now.AddMinutes(ConfirmationRules.LifetimeMinutes);
         authCode.CreatedAt = now;
         authCode.FailedAttempts = 0;
         authCode.LockedUntil = null;
@@ -179,7 +179,7 @@ public class AuthService(
             pending = await orderRepository.GetWithDetailsAsync(orderId, ct);
 
             if (pending is null || pending.ContactPhone != phone || pending.Status != RepairStatus.PendingContact
-                || pending.CreatedAt.AddMinutes(5) <= now)
+                || pending.CreatedAt.AddMinutes(ConfirmationRules.LifetimeMinutes) <= now)
             {
                 return AuthOutcome.Failure(400, "Срок подтверждения истёк", "Оформите новую заявку");
             }

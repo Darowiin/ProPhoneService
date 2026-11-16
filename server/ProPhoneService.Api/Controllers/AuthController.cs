@@ -7,7 +7,7 @@ using ProPhoneService.Domain.Exceptions;
 namespace ProPhoneService.Api.Controllers;
 
 /// <summary>
-/// Вход по коду из телефон: запрос кода через VK, подтверждение, ротация refresh-токена
+/// Вход по коду из сообщения VK: запрос кода через VK, подтверждение, ротация refresh-токена
 /// </summary>
 [ApiController]
 [Route("api/auth")]

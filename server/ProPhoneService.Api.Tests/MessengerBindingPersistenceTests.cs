@@ -1,3 +1,4 @@
+using ProPhoneService.Domain.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
@@ -22,7 +23,7 @@ public class MessengerBindingPersistenceTests
             await using var context = database.Context();
             await start.Task;
             return await new MessengerBindingRepository(context).TryBindAsync(hash, MessengerChannel.Vk,
-                recipient.ToString(), DateTime.UtcNow);
+                recipient.ToString(), TimeProvider.System.GetUtcNow().UtcDateTime);
         }).ToArray();
 
         start.SetResult();
@@ -43,11 +44,11 @@ public class MessengerBindingPersistenceTests
         await database.SeedAsync("second");
         await using var first = database.Context();
         var firstRepository = new MessengerBindingRepository(first);
-        Assert.True(await firstRepository.TryBindAsync("first", MessengerChannel.Vk, "42", DateTime.UtcNow));
+        Assert.True(await firstRepository.TryBindAsync("first", MessengerChannel.Vk, "42", TimeProvider.System.GetUtcNow().UtcDateTime));
         await using var second = database.Context();
         var secondRepository = new MessengerBindingRepository(second);
 
-        var result = await secondRepository.TryBindAsync("second", MessengerChannel.Vk, "99", DateTime.UtcNow);
+        var result = await secondRepository.TryBindAsync("second", MessengerChannel.Vk, "99", TimeProvider.System.GetUtcNow().UtcDateTime);
 
         Assert.False(result);
         Assert.Equal("42", (await secondRepository.GetByPhoneAsync("+79001234567"))!.RecipientId);
@@ -57,13 +58,13 @@ public class MessengerBindingPersistenceTests
     public async Task ExpiredLinkAndWrongChannel_AreRejectedWithoutChanges()
     {
         await using var database = await Database.CreateAsync();
-        await database.SeedAsync("expired", DateTime.UtcNow.AddMinutes(-1));
+        await database.SeedAsync("expired", TimeProvider.System.GetUtcNow().UtcDateTime.AddMinutes(-1));
         await database.SeedAsync("valid");
         await using var context = database.Context();
         var repository = new MessengerBindingRepository(context);
 
-        var expired = await repository.TryBindAsync("expired", MessengerChannel.Vk, "42", DateTime.UtcNow);
-        var wrongChannel = await repository.TryBindAsync("valid", (MessengerChannel)0, "42", DateTime.UtcNow);
+        var expired = await repository.TryBindAsync("expired", MessengerChannel.Vk, "42", TimeProvider.System.GetUtcNow().UtcDateTime);
+        var wrongChannel = await repository.TryBindAsync("valid", (MessengerChannel)0, "42", TimeProvider.System.GetUtcNow().UtcDateTime);
 
         Assert.False(expired);
         Assert.False(wrongChannel);
@@ -76,8 +77,9 @@ public class MessengerBindingPersistenceTests
         await using var database = await Database.CreateAsync();
         await database.SeedAsync("retired");
         await using var context = database.Context();
-        await context.Database.ExecuteSqlRawAsync(
-            "UPDATE messenger_binding SET channel = 'RetiredChannel', recipient_id = '42', linked_at = now()");
+        var now = TimeProvider.System.GetUtcNow().UtcDateTime;
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE messenger_binding SET channel = 'RetiredChannel', recipient_id = '42', linked_at = {now}");
         var repository = new MessengerBindingRepository(context);
 
         var byPhone = await repository.GetByPhoneAsync("+79001234567");
@@ -145,7 +147,7 @@ public class MessengerBindingPersistenceTests
             var order = RepairOrder.CreatePending(device.Id, "+79001234567");
             context.AddRange(device, order, new MessengerBinding { Id = Guid.NewGuid(), TokenHash = hash,
                 Channel = MessengerChannel.Vk, Phone = "+79001234567", OrderId = order.Id,
-                ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(5) });
+                ExpiresAt = expiresAt ?? TimeProvider.System.GetUtcNow().UtcDateTime.AddMinutes(ConfirmationRules.LifetimeMinutes) });
             await context.SaveChangesAsync();
         }
 

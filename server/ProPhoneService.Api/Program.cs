@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -37,12 +40,37 @@ if (!builder.Environment.IsDevelopment()
 }
 builder.Services.AddSingleton(messengerOptions);
 builder.Services.AddNotifier();
+
+// Заголовки принимаются только от явно доверенных прокси и стандартного loopback
+var knownProxies = (builder.Configuration["ReverseProxy:KnownProxies"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(address => IPAddress.TryParse(address, out var ip)
+        ? ip
+        : throw new InvalidOperationException($"ReverseProxy:KnownProxies: некорректный IP '{address}'"))
+    .ToArray();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+
+    foreach (var ip in knownProxies)
+    {
+        options.KnownProxies.Add(ip);
+
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            options.KnownProxies.Add(ip.MapToIPv6());
+        }
+    }
+});
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy("messenger-links", context =>
         RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new()
+            context.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown", _ => new()
             {
                 PermitLimit = 10,
                 Window = TimeSpan.FromMinutes(1),
@@ -79,8 +107,8 @@ builder.Services.AddOptions<AuthOptions>()
         "Некорректный Auth:MasterPhone - укажите телефон мастера или оставьте пустым")
     .Validate(o => string.IsNullOrWhiteSpace(o.MasterPhone) ? o.MasterVkUserId == 0 : o.MasterVkUserId > 0,
         "Auth: задайте MasterPhone и доверенный MasterVkUserId вместе")
-    .Validate(o => o.CodeLifetimeMinutes == 5 && o.MaxFailedCodeAttempts > 0 && o.LockoutMinutes > 0
-        && o.RequestCodeCooldownSeconds > 0, "Auth: код действует 5 минут, ограничения должны быть положительными")
+    .Validate(o => o.MaxFailedCodeAttempts > 0 && o.LockoutMinutes > 0
+        && o.RequestCodeCooldownSeconds > 0, "Auth: ограничения должны быть положительными")
     .ValidateOnStart();
 
 var jwtOptions = new JwtOptions
@@ -123,6 +151,8 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentActor, HttpContextCurrentActor>();
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 app.MapGet("/health", () => Results.Text("Healthy"));
 
