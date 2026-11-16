@@ -708,6 +708,24 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 	};
 }
 
+/** Повторная ссылка привязки VK для созданной заявки
+ *  (POST /api/messengers/orders/{id}/link — карточка 1 бека). */
+export async function fetchMessengerOrderLink(orderId: string): Promise<MessengerLinkDto | null> {
+	if (isMockMode) {
+		await delay(300);
+		return {
+			channel: 'Vk',
+			url: 'https://vk.me/pro_phone_demo',
+			expiresAtUtc: new Date(Date.now() + 15 * 60_000).toISOString()
+		};
+	}
+	const raw = await request<{ channel: string; url: string; expiresAtUtc: string } | null>(
+		`/messengers/orders/${encodeURIComponent(orderId)}/link`,
+		{ method: 'POST', body: JSON.stringify({ channel: 'Vk' }) }
+	);
+	return raw ? { channel: 'Vk', url: raw.url, expiresAtUtc: raw.expiresAtUtc } : null;
+}
+
 export async function changeOrderStatus(orderId: string, next: RepairStatus): Promise<void> {
 	if (isMockMode) {
 		await delay(300);
