@@ -94,7 +94,7 @@ public class AuthorizationEndpointTests
     private static OrderSource SourceWithOrder(out RepairOrder order, out Guid clientId)
     {
         clientId = Guid.NewGuid();
-        var client = new Client { Id = clientId, Name = "Иван", Email = "ivan@example.com" };
+        var client = new Client { Id = clientId, Name = "Иван" };
         order = RepairOrder.Create(clientId, Guid.NewGuid());
 
         return new OrderSource
@@ -188,7 +188,7 @@ public class AuthorizationEndpointTests
     [Fact]
     public async Task GetById_PendingOrder_MasterToken_Returns404()
     {
-        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), null);
         var source = new OrderSource { Orders = [pending] };
         using var factory = source.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
@@ -220,7 +220,7 @@ public class AuthorizationEndpointTests
 
         var response = await client.PatchAsJsonAsync(
             $"/api/orders/{order.Id}/status",
-            new { status = "InDiagnostic" });
+            new { status = "InProgress" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(RepairStatus.Created, order.Status);

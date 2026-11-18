@@ -8,13 +8,13 @@ namespace ProPhoneService.Domain.Repositories;
 public interface IAuthCodeRepository : IRepository<AuthCode>
 {
     /// <summary>
-    /// Выполнить операцию в транзакции, сериализуя запросы для одного нормализованного email
+    /// Выполнить операцию в транзакции, сериализуя запросы для одного телефона
     /// </summary>
-    Task<T> ExecuteForEmailAsync<T>(string email, Func<Task<T>> operation,
+    Task<T> ExecuteForPhoneAsync<T>(string phone, Func<Task<T>> operation,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Найти активную запись кода по email или <c>null</c>, если не запрашивался
+    /// Найти активную запись кода по телефону или <c>null</c>, если не запрашивался
     /// </summary>
-    Task<AuthCode?> GetByEmailAsync(string email, CancellationToken cancellationToken = default);
+    Task<AuthCode?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default);
 }

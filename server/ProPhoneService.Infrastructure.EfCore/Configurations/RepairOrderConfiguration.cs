@@ -20,6 +20,8 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
             .IsRowVersion();
 
         builder.Property(x => x.Status).HasConversion<string>();
+        builder.Property(x => x.SequenceNumber).HasDefaultValueSql("nextval('repair_order_number_seq')");
+        builder.HasIndex(x => x.SequenceNumber).IsUnique();
 
         builder.HasIndex(x => x.ClientId);
         builder.HasIndex(x => x.DeviceId);
@@ -27,7 +29,7 @@ public class RepairOrderConfiguration : IEntityTypeConfiguration<RepairOrder>
         builder.HasIndex(x => new { x.Status, x.CreatedAt }).IsDescending(false, true);
         builder.HasIndex(x => x.PreferredVisitAt);
         // Поиск неподтверждённых заявок при входе по коду
-        builder.HasIndex(x => x.ContactEmail);
+        builder.HasIndex(x => x.ContactPhone);
 
         builder
             .HasMany(x => x.StatusHistory)

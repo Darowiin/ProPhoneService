@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -12,6 +13,7 @@ using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared.Enum;
+using ProPhoneService.Domain.Shared;
 
 namespace ProPhoneService.Api.Tests;
 
@@ -25,6 +27,7 @@ public class CreateOrderEndpointTests
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>
@@ -58,6 +61,7 @@ public class CreateOrderEndpointTests
             {
                 host.UseSetting("Jwt:Key", TestJwt.Key);
                 host.UseSetting("Database:MigrateOnStartup", "false");
+                host.UseSetting("Notifications:RetryDelay", "00:00:00");
                 host.ConfigureTestServices(services =>
                 {
                     var deviceRepo = new Mock<IRepository<Device>>();
@@ -75,7 +79,7 @@ public class CreateOrderEndpointTests
                     var orderRepo = new Mock<IRepairOrderRepository>();
                     orderRepo
                         .Setup(r => r.AddAsync(It.IsAny<RepairOrder>(), It.IsAny<CancellationToken>()))
-                        .Callback((RepairOrder o, CancellationToken _) => CreatedOrder = o)
+                        .Callback((RepairOrder o, CancellationToken _) => { CreatedOrder = o; o.CreatedAt = _nowUtc.UtcDateTime; })
                         .Returns(Task.CompletedTask);
                     orderRepo
                         .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
@@ -83,30 +87,48 @@ public class CreateOrderEndpointTests
 
                     var authCodeRepo = new Mock<IAuthCodeRepository>();
                     authCodeRepo
-                        .Setup(r => r.ExecuteForEmailAsync(It.IsAny<string>(), It.IsAny<Func<Task<AuthOutcome>>>(), It.IsAny<CancellationToken>()))
+                        .Setup(r => r.ExecuteForPhoneAsync(It.IsAny<string>(), It.IsAny<Func<Task<AuthOutcome>>>(), It.IsAny<CancellationToken>()))
                         .Returns((string _, Func<Task<AuthOutcome>> operation, CancellationToken _) => operation());
                     authCodeRepo
-                        .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                        .Setup(r => r.GetByPhoneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                         .ReturnsAsync((string email, CancellationToken _) => AuthCodes.GetValueOrDefault(email));
                     authCodeRepo
                         .Setup(r => r.AddAsync(It.IsAny<AuthCode>(), It.IsAny<CancellationToken>()))
-                        .Callback((AuthCode code, CancellationToken _) => AuthCodes[code.Email] = code)
+                        .Callback((AuthCode code, CancellationToken _) => AuthCodes[code.Phone] = code)
                         .Returns(Task.CompletedTask);
                     authCodeRepo
                         .Setup(r => r.SaveChangesAsync(It.IsAny<CancellationToken>()))
                         .ReturnsAsync(1);
 
+                    orderRepo.Setup(x => x.GetByIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(() => CreatedOrder);
+                    var bindingRepo = new Mock<IMessengerBindingRepository>();
+                    bindingRepo.Setup(x => x.AddAsync(It.IsAny<MessengerBinding>(), It.IsAny<CancellationToken>()))
+                        .Returns(Task.CompletedTask);
+                    bindingRepo.Setup(x => x.GetByClientIdAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+                        .ReturnsAsync(new MessengerBinding
+                        {
+                            Id = Guid.NewGuid(), TokenHash = "hash", Phone = "+79001234567", Channel = MessengerChannel.Vk,
+                            AccountId = Guid.NewGuid(), RecipientId = "42", LinkedAt = _nowUtc.UtcDateTime,
+                        });
+                    services.RemoveAll<IRepository<NotificationLog>>();
+                    services.AddSingleton(Mock.Of<IRepository<NotificationLog>>());
+                    services.RemoveAll<IMessengerBindingRepository>();
+                    services.AddSingleton(bindingRepo.Object);
+                    services.RemoveAll<MessengerOptions>();
+                    services.AddSingleton(MessengerDeliveryTests.Options());
+
                     var notifier = new Mock<INotifier>();
                     notifier
                         .Setup(n => n.SendAsync(
-                            It.IsAny<string>(),
+                            It.IsAny<MessengerChannel>(),
                             It.IsAny<string>(),
                             It.IsAny<string>(),
                             It.IsAny<CancellationToken>()))
-                        .Callback((string target, string subject, string text, CancellationToken _) =>
+                        .Callback((MessengerChannel channel, string target, string text, CancellationToken _) =>
                         {
-                            if (FailNotification) throw new IOException("SMTP unavailable");
-                            Notifications.Add((target, subject, text));
+                            if (FailNotification) throw new IOException("VK unavailable");
+                            Notifications.Add((target, channel.ToString(), text));
                         })
                         .Returns(Task.CompletedTask);
 
@@ -143,11 +165,10 @@ public class CreateOrderEndpointTests
         return errors;
     }
 
-    private static object ValidBody(Guid[] serviceIds, string? email = "ivan@example.com") => new
+    private static object ValidBody(Guid[] serviceIds, string? phone = "+79001234567") => new
     {
         name = "Иван",
-        phone = "+79001234567",
-        email,
+        phone,
         deviceType = "Phone",
         deviceManufacturer = "Apple",
         deviceModel = "iPhone 13",
@@ -156,7 +177,7 @@ public class CreateOrderEndpointTests
     };
 
     [Fact]
-    public async Task Create_GuestWithEmail_CreatesPendingOrderAndSendsCode()
+    public async Task Create_GuestWithPhone_CreatesPendingOrderAndReturnsVkLink()
     {
         var harness = new CreateOrderHarness();
         using var factory = harness.CreateFactory();
@@ -166,7 +187,6 @@ public class CreateOrderEndpointTests
         {
             name = "Иван",
             phone = "+79001234567",
-            email = "  Ivan@Example.COM ",
             deviceType = "Phone",
             deviceManufacturer = "Apple",
             deviceModel = "iPhone 13",
@@ -177,26 +197,22 @@ public class CreateOrderEndpointTests
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<CreateOrderResponse>(_jsonOptions);
         Assert.NotNull(result);
-        Assert.True(result.RequiresEmailConfirmation);
+        Assert.True(result.RequiresContactConfirmation);
+        Assert.Equal(harness.CreatedOrder!.OrderNumber, result.OrderNumber);
 
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(RepairStatus.PendingContact, harness.CreatedOrder.Status);
         Assert.Null(harness.CreatedOrder.ClientId);
         Assert.Equal("Иван", harness.CreatedOrder.ContactName);
-        Assert.Equal("ivan@example.com", harness.CreatedOrder.ContactEmail);
         Assert.Equal("+79001234567", harness.CreatedOrder.ContactPhone);
 
-        // Код ушёл на email заявки и совпадает с сохранённым
-        var (target, subject, text) = Assert.Single(harness.Notifications);
-        Assert.Equal("ivan@example.com", target);
-        Assert.Equal("Код подтверждения ProPhoneService", subject);
-        var match = Regex.Match(text, @"\b\d{6}\b");
-        Assert.True(match.Success);
-        Assert.Equal(match.Value, harness.AuthCodes["ivan@example.com"].Code);
+        Assert.Empty(harness.Notifications);
+        Assert.NotNull(result.MessengerLink);
+        Assert.StartsWith("https://vk.me/club123?ref=", result.MessengerLink.Url);
     }
 
     [Fact]
-    public async Task Create_SmtpUnavailable_ReturnsCreatedWithPendingOrder()
+    public async Task Create_DoesNotSendCodeBeforeVkBinding()
     {
         var harness = new CreateOrderHarness { FailNotification = true };
         using var factory = harness.CreateFactory();
@@ -210,29 +226,29 @@ public class CreateOrderEndpointTests
     }
 
     [Fact]
-    public async Task Create_GuestWithoutEmail_Returns400WithEmailError()
+    public async Task Create_GuestWithoutPhone_Returns400WithPhoneError()
     {
         var harness = new CreateOrderHarness();
         using var factory = harness.CreateFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([], email: null));
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([], phone: null));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadErrorsAsync(response);
-        Assert.True(errors.ContainsKey("Email"));
+        Assert.True(errors.ContainsKey("Phone"));
         Assert.Null(harness.CreatedOrder);
         Assert.Empty(harness.Notifications);
     }
 
     [Fact]
-    public async Task Create_InvalidEmail_Returns400WithEmailError()
+    public async Task Create_InvalidPhoneText_Returns400WithPhoneError()
     {
         var harness = new CreateOrderHarness();
         using var factory = harness.CreateFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([], email: "не почта"));
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([], phone: "не телефон"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Null(harness.CreatedOrder);
@@ -250,12 +266,15 @@ public class CreateOrderEndpointTests
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<CreateOrderResponse>(_jsonOptions);
-        Assert.False(result!.RequiresEmailConfirmation);
+        Assert.False(result!.RequiresContactConfirmation);
 
         Assert.NotNull(harness.CreatedOrder);
         Assert.Equal(RepairStatus.Created, harness.CreatedOrder.Status);
         Assert.Equal(clientId, harness.CreatedOrder.ClientId);
-        Assert.Empty(harness.Notifications);
+        var notification = Assert.Single(harness.Notifications);
+        Assert.Equal("42", notification.Target);
+        Assert.Contains("Заявка принята", notification.Text);
+        Assert.DoesNotContain("Ваш код подтверждения", notification.Text);
     }
 
     [Fact]
@@ -294,7 +313,6 @@ public class CreateOrderEndpointTests
         {
             name = "Иван",
             phone = "+79001234567",
-            email = "ivan@example.com",
             deviceType = "Phone",
             deviceManufacturer = "Apple",
             deviceModel = "iPhone 13",
@@ -319,7 +337,6 @@ public class CreateOrderEndpointTests
         {
             name = "Иван",
             phone = "+79001234567",
-            email = "ivan@example.com",
             deviceType = "Phone",
             deviceManufacturer = "Apple",
             deviceModel = "iPhone 13",
@@ -342,7 +359,6 @@ public class CreateOrderEndpointTests
         {
             name = "Иван",
             phone = "12345",
-            email = "ivan@example.com",
             deviceType = "Phone",
             deviceManufacturer = "Apple",
             deviceModel = "iPhone 13",
@@ -366,7 +382,6 @@ public class CreateOrderEndpointTests
         {
             name = "Иван",
             phone = "+79001234567",
-            email = "ivan@example.com",
             deviceType = "Phone",
             deviceManufacturer = "Apple",
             deviceModel = "iPhone 13",
@@ -391,5 +406,19 @@ public class CreateOrderEndpointTests
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = await ReadErrorsAsync(response);
         Assert.True(errors.ContainsKey("ServiceIds"));
+    }
+
+    [Fact]
+    public async Task Create_AuthenticatedClientWithUnavailableVk_StillReturnsCreatedOrder()
+    {
+        var harness = new CreateOrderHarness { FailNotification = true };
+        using var factory = harness.CreateFactory();
+        using var client = factory.CreateClient().WithToken(TestJwt.ForClient(Guid.NewGuid()));
+
+        var response = await client.PostAsJsonAsync("/api/orders", ValidBody([]));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(RepairStatus.Created, harness.CreatedOrder!.Status);
+        Assert.NotNull(harness.CreatedOrder.ClientId);
     }
 }

@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ProPhoneService.Domain.Model;
 
 /// <summary>
-/// Одноразовый код подтверждения email для входа (в этом спринте email - единственный канал)
+/// Одноразовый код подтверждения телефона для входа (доставляется через VK)
 /// </summary>
 [Table("auth_code")]
 public class AuthCode : IEntity
@@ -17,10 +17,16 @@ public class AuthCode : IEntity
     public required Guid Id { get; set; }
 
     /// <summary>
-    /// Нормализованный email - один активный код на адрес
+    /// Телефон — один активный код на контакт
     /// </summary>
-    [Column("email")]
-    public required string Email { get; set; }
+    [Column("phone")]
+    public required string Phone { get; set; }
+
+    /// <summary>
+    /// Привязка получателя VK, которому доставлен код
+    /// </summary>
+    [Column("binding_id")]
+    public Guid BindingId { get; set; }
 
     /// <summary>
     /// Код подтверждения (6 цифр)

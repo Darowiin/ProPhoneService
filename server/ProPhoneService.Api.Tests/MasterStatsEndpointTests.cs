@@ -30,6 +30,8 @@ public class MasterStatsEndpointTests
 
         public decimal Total { get; init; }
 
+        public TimeProvider Clock { get; } = new TestTimeProvider(new DateTimeOffset(2026, 3, 1, 0, 0, 0, TimeSpan.Zero));
+
         public Mock<IRepairOrderRepository> Repository { get; } = new();
 
         public WebApplicationFactory<Program> CreateFactory()
@@ -53,6 +55,8 @@ public class MasterStatsEndpointTests
                 host.UseSetting("Database:MigrateOnStartup", "false");
                 host.ConfigureTestServices(services =>
                 {
+                    services.RemoveAll<TimeProvider>();
+                    services.AddSingleton(Clock);
                     services.RemoveAll<IRepairOrderRepository>();
                     services.AddScoped(_ => Repository.Object);
                 });
@@ -109,7 +113,8 @@ public class MasterStatsEndpointTests
     [Fact]
     public async Task GetStats_DefaultPeriod_IsCurrentMonth()
     {
-        using var factory = new StatsSource().CreateFactory();
+        var source = new StatsSource();
+        using var factory = source.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForMaster());
 
         var response = await client.GetAsync("/api/master/stats");
@@ -120,7 +125,7 @@ public class MasterStatsEndpointTests
         Assert.NotNull(stats.FromUtc);
         Assert.Equal(1, stats.FromUtc.Value.Day);
         Assert.Equal(0, stats.FromUtc.Value.Hour);
-        Assert.Equal(DateTime.UtcNow.Month, stats.FromUtc.Value.Month);
+        Assert.Equal(source.Clock.GetUtcNow().Month, stats.FromUtc.Value.Month);
         Assert.Equal(DateTimeKind.Utc, DateTime.SpecifyKind(stats.FromUtc.Value, DateTimeKind.Utc).Kind);
     }
 

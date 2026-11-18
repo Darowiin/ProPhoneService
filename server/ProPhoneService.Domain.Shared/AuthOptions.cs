@@ -6,11 +6,6 @@ namespace ProPhoneService.Domain.Shared;
 public sealed class AuthOptions
 {
     /// <summary>
-    /// Срок жизни одноразового кода, мин
-    /// </summary>
-    public int CodeLifetimeMinutes { get; set; } = 5;
-
-    /// <summary>
     /// Лимит неверных кодов до блокировки контакта
     /// </summary>
     public int MaxFailedCodeAttempts { get; set; } = 5;
@@ -36,8 +31,13 @@ public sealed class AuthOptions
     public int RequestCodeCooldownSeconds { get; set; } = 60;
 
     /// <summary>
-    /// Email мастерской для мастер-аккаунта: при старте ему апсертится роль Master;
-    /// пусто - мастер не заводится (задаётся через Auth__MasterEmail)
+    /// Телефон мастерской для мастер-аккаунта: при старте ему апсертится роль Master;
+    /// пусто — мастер не создаётся (задаётся через Auth__MasterPhone)
     /// </summary>
-    public string? MasterEmail { get; set; }
+    public string? MasterPhone { get; set; }
+
+    /// <summary>
+    /// Доверенный ID пользователя VK для мастер-аккаунта
+    /// </summary>
+    public long MasterVkUserId { get; set; }
 }

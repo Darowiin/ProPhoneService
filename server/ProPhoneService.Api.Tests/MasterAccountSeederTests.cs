@@ -9,7 +9,7 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Api.Tests;
 
 /// <summary>
-/// Проверка работы мастер-аккаунтов - мастер-аккаунт заводится апсертом при старте по email из конфигурации
+/// Проверка работы мастер-аккаунтов - мастер-аккаунт заводится апсертом при старте по телефону и доверенному VK ID из конфигурации
 /// </summary>
 public class MasterAccountSeederTests
 {
@@ -25,15 +25,17 @@ public class MasterAccountSeederTests
 
         public MasterAccountSeeder Seeder { get; }
 
-        public ClientStore(string? masterEmail, IEnumerable<Account>? accounts = null)
+        public MessengerBinding? AddedBinding { get; private set; }
+
+        public ClientStore(string? masterPhone, IEnumerable<Account>? accounts = null, TimeProvider? timeProvider = null)
         {
             var accountList = (accounts ?? []).ToList();
 
             Repository = new Mock<IClientRepository>();
             Repository
-                .Setup(r => r.GetByEmailAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Setup(r => r.GetByPhoneAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync((string email, CancellationToken _) =>
-                    Clients.FirstOrDefault(c => c.Email == email));
+                    Clients.FirstOrDefault(c => c.Phone == email));
             Repository
                 .Setup(r => r.AddAsync(It.IsAny<Client>(), It.IsAny<CancellationToken>()))
                 .Callback((Client c, CancellationToken _) => Clients.Add(c))
@@ -53,10 +55,16 @@ public class MasterAccountSeederTests
                 .Callback((Account a, CancellationToken _) => accountList.Add(a))
                 .Returns(Task.CompletedTask);
 
-            Seeder = new MasterAccountSeeder(
+            var bindings = new Mock<IMessengerBindingRepository>();
+            bindings.Setup(x => x.AddAsync(It.IsAny<MessengerBinding>(), It.IsAny<CancellationToken>()))
+                .Callback((MessengerBinding binding, CancellationToken _) => AddedBinding = binding)
+                .Returns(Task.CompletedTask);
+
+            Seeder = new MasterAccountSeeder(timeProvider ?? TimeProvider.System,
                 Repository.Object,
                 Accounts.Object,
-                new AuthOptions { MasterEmail = masterEmail },
+                bindings.Object,
+                new AuthOptions { MasterPhone = masterPhone, MasterVkUserId = 42 },
                 NullLogger<MasterAccountSeeder>.Instance);
 
             AddedAccounts = accountList;
@@ -66,7 +74,7 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_WithoutMasterEmail_DoesNothing()
+    public async Task Ensure_WithoutMasterPhone_DoesNothing()
     {
         var store = new ClientStore(null);
 
@@ -79,29 +87,33 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_NewMasterEmail_CreatesClientAndMasterAccount()
+    public async Task Ensure_NewMasterPhone_CreatesClientAndMasterAccount()
     {
-        var store = new ClientStore("  Boss@Example.COM ");
+        var clock = new TestTimeProvider(new DateTimeOffset(2026, 11, 16, 10, 0, 0, TimeSpan.Zero));
+        var store = new ClientStore("  +79001234567 ", timeProvider: clock);
 
         var changed = await store.Seeder.EnsureAsync();
 
         Assert.True(changed);
         var client = Assert.Single(store.Clients);
-        Assert.Equal("boss@example.com", client.Email);
+        Assert.Equal("+79001234567", client.Phone);
         Assert.Equal("Мастер", client.Name);
 
         var account = Assert.Single(store.AddedAccounts);
         Assert.Equal(client.Id, account.ClientId);
         Assert.Equal(AccountRole.Master, account.Role);
         Assert.Equal(1, store.Saves);
+        Assert.NotNull(store.AddedBinding);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, store.AddedBinding.LinkedAt);
+        Assert.Equal(clock.GetUtcNow().UtcDateTime, store.AddedBinding.ExpiresAt);
     }
 
     [Fact]
     public async Task Ensure_ExistingClientWithClientAccount_PromotesToMaster()
     {
-        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Email = "boss@example.com" };
+        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Phone = "+79001234567" };
         var account = new Account { Id = Guid.NewGuid(), ClientId = client.Id, Role = AccountRole.Client };
-        var store = new ClientStore("boss@example.com", [account]);
+        var store = new ClientStore("+79001234567", [account]);
         store.Clients.Add(client);
 
         var changed = await store.Seeder.EnsureAsync();
@@ -114,16 +126,16 @@ public class MasterAccountSeederTests
     }
 
     [Fact]
-    public async Task Ensure_AlreadyMaster_IsIdempotent()
+    public async Task Ensure_AlreadyMasterWithoutBinding_CreatesBinding()
     {
-        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Email = "boss@example.com" };
+        var client = new Client { Id = Guid.NewGuid(), Name = "Босс", Phone = "+79001234567" };
         var account = new Account { Id = Guid.NewGuid(), ClientId = client.Id, Role = AccountRole.Master };
-        var store = new ClientStore("boss@example.com", [account]);
+        var store = new ClientStore("+79001234567", [account]);
         store.Clients.Add(client);
 
         var changed = await store.Seeder.EnsureAsync();
 
-        Assert.False(changed);
-        Assert.Equal(0, store.Saves);
+        Assert.True(changed);
+        Assert.Equal(1, store.Saves);
     }
 }

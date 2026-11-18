@@ -1,4 +1,5 @@
 using ProPhoneService.Domain.Exceptions;
+using System.Globalization;
 using ProPhoneService.Domain.Shared.Enum;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -19,8 +20,20 @@ public class RepairOrder : IEntity
     public required Guid Id { get; set; }
 
     /// <summary>
+    /// Порядковый номер, однократно назначаемый базой данных
+    /// </summary>
+    [Column("sequence_number")]
+    public long SequenceNumber { get; private set; }
+
+    /// <summary>
+    /// Постоянный номер заявки для интерфейса и уведомлений
+    /// </summary>
+    [NotMapped]
+    public string OrderNumber => "З-" + SequenceNumber.ToString("D6", CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// Идентификатор клиента, оформившего заказ;
-    /// <c>null</c> - заявка оставлена без входа и ждёт подтверждения email
+    /// <c>null</c> - заявка оставлена без входа и ждёт подтверждения контакта
     /// </summary>
     [ForeignKey(nameof(ClientId))]
     [Column("client_id")]
@@ -70,13 +83,7 @@ public class RepairOrder : IEntity
     public string? ContactName { get; set; }
 
     /// <summary>
-    /// Email, с которого оставлена заявка (нужен для подтверждения кодом)
-    /// </summary>
-    [Column("contact_email")]
-    public string? ContactEmail { get; set; }
-
-    /// <summary>
-    /// Телефон из заявки (необязательно, только для связи)
+    /// Телефон из заявки для подтверждения через VK
     /// </summary>
     [Column("contact_phone")]
     public string? ContactPhone { get; set; }
@@ -128,16 +135,14 @@ public class RepairOrder : IEntity
     }
 
     /// <summary>
-    /// Создать заявку без входа: клиент и аккаунт появятся после подтверждения email
+    /// Создать заявку без входа: клиент и аккаунт появятся после подтверждения контакта
     /// </summary>
     /// <param name="deviceId">Идентификатор устройства в ремонте</param>
-    /// <param name="contactEmail">Email для кода подтверждения</param>
-    /// <param name="contactPhone">Телефон из заявки (необязательно)</param>
+    /// <param name="contactPhone">Телефон из заявки</param>
     /// <param name="preferredVisitAt">Предпочитаемая дата и время визита клиента (UTC, необязательно)</param>
     /// <param name="problemDescription">Описание проблемы со слов клиента (необязательно)</param>
     public static RepairOrder CreatePending(
         Guid deviceId,
-        string contactEmail,
         string? contactPhone,
         DateTime? preferredVisitAt = null,
         string? problemDescription = null)
@@ -147,7 +152,6 @@ public class RepairOrder : IEntity
             Id = Guid.NewGuid(),
             ClientId = null,
             DeviceId = deviceId,
-            ContactEmail = contactEmail,
             ContactPhone = contactPhone,
             PreferredVisitAt = preferredVisitAt,
             ProblemDescription = problemDescription,
@@ -169,7 +173,7 @@ public class RepairOrder : IEntity
     /// <summary>
     /// Привязать подтвердившегося клиента: заявка переходит из ожидания контакта в <see cref="RepairStatus.Created"/>
     /// </summary>
-    /// <param name="clientId">Идентификатор клиента, подтвердившего email</param>
+    /// <param name="clientId">Идентификатор клиента, подтвердившего контакт</param>
     /// <exception cref="InvalidOperationException">Заявка не ожидает подтверждения контакта</exception>
     public void ConfirmClient(Guid clientId)
     {

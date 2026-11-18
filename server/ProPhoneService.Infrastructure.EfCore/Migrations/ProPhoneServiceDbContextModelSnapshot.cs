@@ -22,6 +22,8 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("repair_order_number_seq");
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.Account", b =>
                 {
                     b.Property<Guid>("Id")
@@ -56,6 +58,10 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid>("BindingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("binding_id");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasColumnType("text")
@@ -64,11 +70,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
-
-                    b.Property<string>("Email")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("email");
 
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
@@ -82,9 +83,16 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("locked_until");
 
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("phone");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Email")
+                    b.HasIndex("BindingId");
+
+                    b.HasIndex("Phone")
                         .IsUnique();
 
                     b.ToTable("auth_code");
@@ -101,10 +109,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("Email")
-                        .HasColumnType("text")
-                        .HasColumnName("email");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text")
@@ -115,9 +119,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnName("phone");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Email")
-                        .IsUnique();
 
                     b.HasIndex("Phone")
                         .IsUnique();
@@ -156,6 +157,68 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.ToTable("device");
                 });
 
+            modelBuilder.Entity("ProPhoneService.Domain.Model.MessengerBinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("channel");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTime?>("LinkedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("linked_at");
+
+                    b.Property<Guid?>("OrderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_id");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("RecipientId")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("recipient_id");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
+
+                    b.HasIndex("OrderId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("Phone", "LinkedAt");
+
+                    b.ToTable("messenger_binding", t =>
+                        {
+                            t.HasCheckConstraint("CK_messenger_binding_owner", "(order_id IS NOT NULL AND account_id IS NULL) OR (order_id IS NULL AND account_id IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -166,6 +229,11 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                     b.Property<int>("Attempts")
                         .HasColumnType("integer")
                         .HasColumnName("attempts");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("channel");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -214,10 +282,6 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("client_id");
 
-                    b.Property<string>("ContactEmail")
-                        .HasColumnType("text")
-                        .HasColumnName("contact_email");
-
                     b.Property<string>("ContactName")
                         .HasColumnType("text")
                         .HasColumnName("contact_name");
@@ -242,6 +306,12 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .HasColumnType("text")
                         .HasColumnName("problem_description");
 
+                    b.Property<long>("SequenceNumber")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("sequence_number")
+                        .HasDefaultValueSql("nextval('repair_order_number_seq')");
+
                     b.Property<string>("Status")
                         .HasColumnType("text")
                         .HasColumnName("status");
@@ -260,11 +330,14 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
 
                     b.HasIndex("ClientId");
 
-                    b.HasIndex("ContactEmail");
+                    b.HasIndex("ContactPhone");
 
                     b.HasIndex("DeviceId");
 
                     b.HasIndex("PreferredVisitAt");
+
+                    b.HasIndex("SequenceNumber")
+                        .IsUnique();
 
                     b.HasIndex("Status", "CreatedAt")
                         .IsDescending(false, true);
@@ -460,6 +533,28 @@ namespace ProPhoneService.Infrastructure.EfCore.Migrations
                         .IsRequired();
 
                     b.Navigation("Client");
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.AuthCode", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.MessengerBinding", null)
+                        .WithMany()
+                        .HasForeignKey("BindingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ProPhoneService.Domain.Model.MessengerBinding", b =>
+                {
+                    b.HasOne("ProPhoneService.Domain.Model.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("ProPhoneService.Domain.Model.RepairOrder", null)
+                        .WithMany()
+                        .HasForeignKey("OrderId")
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("ProPhoneService.Domain.Model.NotificationLog", b =>

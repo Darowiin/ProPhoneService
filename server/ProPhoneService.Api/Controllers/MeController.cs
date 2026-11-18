@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Shared;
+using ProPhoneService.Domain.Repositories;
 using ProPhoneService.Domain.Shared.Enum;
 
 namespace ProPhoneService.Api.Controllers;
@@ -13,8 +14,31 @@ namespace ProPhoneService.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/me")]
-public class MeController(OrderWorkflowService ordersService) : ControllerBase
+public class MeController(OrderWorkflowService ordersService, IClientRepository clients, IMessengerBindingRepository bindings) : ControllerBase
 {
+    /// <summary>
+    /// Получить собственный профиль без выбора канала уведомлений
+    /// </summary>
+    [HttpGet]
+    public async Task<ActionResult<MeProfileDto>> GetProfile(CancellationToken cancellationToken)
+    {
+        if (!TryGetClientId(out var clientId))
+        {
+            return MissingClientClaim();
+        }
+
+        var client = await clients.GetByIdAsync(clientId, cancellationToken);
+        if (client is null)
+        {
+            return NotFound();
+        }
+
+        var binding = client.Phone is null ? null : await bindings.GetByPhoneAsync(client.Phone, cancellationToken);
+        var accountId = User.FindFirst(AuthClaims.Subject)?.Value;
+        return Ok(new MeProfileDto(client.Id, client.Name, client.Phone,
+            binding?.AccountId?.ToString() == accountId && binding?.RecipientId is not null));
+    }
+
     /// <summary>
     /// Получить страницу заказов клиента (новые сверху)
     /// </summary>

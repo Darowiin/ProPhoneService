@@ -25,7 +25,13 @@ public class NotificationLog : IEntity
     public required Guid RepairOrderId { get; set; }
 
     /// <summary>
-    /// Получатель (email)
+    /// Канал доставки уведомления
+    /// </summary>
+    [Column("channel")]
+    public MessengerChannel Channel { get; set; } = MessengerChannel.Vk;
+
+    /// <summary>
+    /// Идентификатор получателя VK
     /// </summary>
     [Column("recipient")]
     public string? Recipient { get; set; }

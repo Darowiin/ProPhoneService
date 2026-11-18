@@ -197,7 +197,7 @@ public class MeOrdersEndpointTests
     [Fact]
     public async Task GetById_OwnOrder_Returns200WithFullCard()
     {
-        var clientEntity = new Client { Id = Guid.NewGuid(), Name = "Иван", Email = "ivan@example.com" };
+        var clientEntity = new Client { Id = Guid.NewGuid(), Name = "Иван" };
         var (order, device) = MakeOrder(clientEntity.Id, RepairStatus.InProgress, new DateTime(2026, 10, 1, 10, 0, 0, DateTimeKind.Utc));
         order.TotalPrice = 2700m;
 
@@ -250,7 +250,7 @@ public class MeOrdersEndpointTests
     public async Task GetById_PendingOrder_Returns404()
     {
         var clientId = Guid.NewGuid();
-        var pending = RepairOrder.CreatePending(Guid.NewGuid(), "guest@example.com", null);
+        var pending = RepairOrder.CreatePending(Guid.NewGuid(), null);
         var source = new MyOrdersSource { Orders = [pending] };
         using var factory = source.CreateFactory();
         using var client = factory.CreateClient().WithToken(TestJwt.ForClient(clientId));

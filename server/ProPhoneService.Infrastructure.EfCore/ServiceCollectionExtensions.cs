@@ -39,25 +39,33 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IServiceRepository, ServiceRepository>();
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<IAuthCodeRepository, AuthCodeRepository>();
+        services.AddScoped<IMessengerBindingRepository, MessengerBindingRepository>();
 
         return services;
     }
 
     /// <summary>
-    /// Регистрация отправителя сообщений: SMTP-провайдер (Resend) или лог-заглушка
+    /// Зарегистрировать доставку VK и Long Poll с ограниченным временем ожидания
     /// </summary>
-    /// <param name="services">Коллекция сервисов</param>
-    /// <param name="useEmailProvider"><c>true</c> - письма через SMTP, <c>false</c> - запись в лог (демо)</param>
-    public static IServiceCollection AddNotifier(this IServiceCollection services, bool useEmailProvider)
+    public static IServiceCollection AddNotifier(this IServiceCollection services)
     {
-        if (useEmailProvider)
+        services.AddHttpClient<VkNotifier>(client =>
         {
-            services.AddScoped<INotifier, SmtpEmailNotifier>();
-        }
-        else
+            client.BaseAddress = new Uri("https://api.vk.com/method/");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        }).RemoveAllLoggers();
+
+        services.AddHttpClient("VkLongPoll", client =>
         {
-            services.AddScoped<INotifier, LoggingNotifier>();
-        }
+            client.BaseAddress = new Uri("https://api.vk.com/method/");
+            client.Timeout = TimeSpan.FromSeconds(40);
+        }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+
+        services.AddHostedService<VkLongPollService>();
+        services.AddHostedService<PendingOrderExpirationService>();
+
+        services.AddScoped<INotifier, MessengerNotifier>();
 
         return services;
     }

@@ -13,7 +13,6 @@ public class ClientConfiguration : IEntityTypeConfiguration<Client>
     public void Configure(EntityTypeBuilder<Client> builder)
     {
         builder.HasIndex(x => x.Phone).IsUnique();
-        builder.HasIndex(x => x.Email).IsUnique();
 
         builder
             .HasMany(x => x.RepairOrders)

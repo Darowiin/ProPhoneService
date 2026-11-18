@@ -12,12 +12,7 @@ public class ClientRepository(ProPhoneServiceDbContext context) : EfRepository<C
     /// <inheritdoc />
     public Task<Client?> GetByPhoneAsync(string phone, CancellationToken cancellationToken = default)
     {
-        return Set.AsNoTracking().FirstOrDefaultAsync(x => x.Phone == phone, cancellationToken);
+        return Set.FirstOrDefaultAsync(x => x.Phone == phone, cancellationToken);
     }
 
-    /// <inheritdoc />
-    public Task<Client?> GetByEmailAsync(string email, CancellationToken cancellationToken = default)
-    {
-        return Set.AsNoTracking().FirstOrDefaultAsync(x => x.Email == email, cancellationToken);
-    }
 }

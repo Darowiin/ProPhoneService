@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -5,12 +8,13 @@ using Microsoft.IdentityModel.Tokens;
 using ProPhoneService.Api.Auth;
 using ProPhoneService.Domain.Shared.Auditing;
 using ProPhoneService.Application;
+using ProPhoneService.Application.Contracts;
 using ProPhoneService.Application.Services;
 using ProPhoneService.Domain.Shared;
 using ProPhoneService.Infrastructure.EfCore;
-using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,15 +31,53 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 
 builder.Services.AddApplicationServices();
 
-// Email-провайдер: вне Development обязателен, в Development без настроек - лог-заглушка
-var emailOptions = builder.Configuration.GetSection("Email").Get<EmailOptions>() ?? new EmailOptions();
-if (!emailOptions.IsConfigured && !builder.Environment.IsDevelopment())
+// Пустые настройки допустимы в Development, отправка в ненастроенный канал вернёт 503
+var messengerOptions = builder.Configuration.GetSection("Messengers").Get<MessengerOptions>() ?? new();
+if (!builder.Environment.IsDevelopment()
+    && !messengerOptions.Vk.IsConfigured)
 {
-    throw new InvalidOperationException(
-        "Email: не заданы SMTP-настройки провайдера; задайте Email__Password и Email__FromAddress в окружении");
+    throw new InvalidOperationException("Messengers: задайте настройки VK в окружении");
 }
-builder.Services.AddSingleton(emailOptions);
-builder.Services.AddNotifier(emailOptions.IsConfigured);
+builder.Services.AddSingleton(messengerOptions);
+builder.Services.AddNotifier();
+
+// Заголовки принимаются только от явно доверенных прокси и стандартного loopback
+var knownProxies = (builder.Configuration["ReverseProxy:KnownProxies"] ?? "")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(address => IPAddress.TryParse(address, out var ip)
+        ? ip
+        : throw new InvalidOperationException($"ReverseProxy:KnownProxies: некорректный IP '{address}'"))
+    .ToArray();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+
+    foreach (var ip in knownProxies)
+    {
+        options.KnownProxies.Add(ip);
+
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            options.KnownProxies.Add(ip.MapToIPv6());
+        }
+    }
+});
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("messenger-links", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.MapToIPv6().ToString() ?? "unknown", _ => new()
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                AutoReplenishment = true,
+            }));
+});
 
 builder.Services.AddOptions<WorkshopOptions>()
     .Bind(builder.Configuration.GetSection("Workshop"))
@@ -61,8 +103,12 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
 
 builder.Services.AddOptions<AuthOptions>()
     .Bind(builder.Configuration.GetSection("Auth"))
-    .Validate(o => string.IsNullOrWhiteSpace(o.MasterEmail) || new EmailAddressAttribute().IsValid(o.MasterEmail),
-        "Некорректный Auth:MasterEmail - укажите email мастера или оставьте пустым")
+    .Validate(o => string.IsNullOrWhiteSpace(o.MasterPhone) || PhoneNormalizer.TryNormalize(o.MasterPhone, out _),
+        "Некорректный Auth:MasterPhone - укажите телефон мастера или оставьте пустым")
+    .Validate(o => string.IsNullOrWhiteSpace(o.MasterPhone) ? o.MasterVkUserId == 0 : o.MasterVkUserId > 0,
+        "Auth: задайте MasterPhone и доверенный MasterVkUserId вместе")
+    .Validate(o => o.MaxFailedCodeAttempts > 0 && o.LockoutMinutes > 0
+        && o.RequestCodeCooldownSeconds > 0, "Auth: ограничения должны быть положительными")
     .ValidateOnStart();
 
 var jwtOptions = new JwtOptions
@@ -106,8 +152,23 @@ builder.Services.AddScoped<ICurrentActor, HttpContextCurrentActor>();
 
 var app = builder.Build();
 
+app.UseForwardedHeaders();
+
 app.MapGet("/health", () => Results.Text("Healthy"));
 
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next(context);
+    }
+    catch (MessengerUnavailableException ex) when (!context.Response.HasStarted)
+    {
+        await Results.Problem(statusCode: 503, title: "Мессенджер временно недоступен", detail: ex.Message,
+            extensions: new Dictionary<string, object?> { ["offlineOrderAvailable"] = true }).ExecuteAsync(context);
+    }
+});
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -118,13 +179,24 @@ if (!string.IsNullOrWhiteSpace(connectionString))
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<ProPhoneServiceDbContext>();
 
-    // Автомиграции в Development; Database__MigrateOnStartup=false отключает (тесты)
-    if (app.Environment.IsDevelopment() && builder.Configuration.GetValue("Database:MigrateOnStartup", true))
+    var migrateOnStartup = builder.Configuration.GetValue<bool?>("Database:MigrateOnStartup")
+        ?? app.Environment.IsDevelopment();
+
+    if (migrateOnStartup)
     {
-        db.Database.Migrate();
+        app.Logger.LogInformation("Применение миграций БД при запуске в окружении {Environment}",
+            app.Environment.EnvironmentName);
+
+        await db.Database.MigrateAsync();
+
+        app.Logger.LogInformation("Миграции БД применены, схема актуальна");
+    }
+    else
+    {
+        app.Logger.LogInformation("Автоматическое применение миграций БД при запуске отключено");
     }
 
-    // Мастер-аккаунт: апсерт роли Master для Auth:MasterEmail (пусто - пропуск)
+    // Мастер-аккаунт: апсерт роли Master для Auth:MasterPhone (пусто - пропуск)
     await scope.ServiceProvider.GetRequiredService<MasterAccountSeeder>().EnsureAsync();
 }
 app.Run();

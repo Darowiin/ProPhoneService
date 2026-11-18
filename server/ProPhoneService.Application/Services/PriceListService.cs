@@ -24,10 +24,12 @@ public class PriceListService(
     /// </summary>
     public const string CacheTag = "services";
 
+    private const int CacheLifetimeMinutes = 5;
+
     private static readonly HybridCacheEntryOptions _cacheOptions = new()
     {
-        Expiration = TimeSpan.FromMinutes(5),
-        LocalCacheExpiration = TimeSpan.FromMinutes(5),
+        Expiration = TimeSpan.FromMinutes(CacheLifetimeMinutes),
+        LocalCacheExpiration = TimeSpan.FromMinutes(CacheLifetimeMinutes),
     };
 
     /// <summary>

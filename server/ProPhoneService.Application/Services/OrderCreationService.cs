@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Logging;
 using ProPhoneService.Application.Contracts;
 using ProPhoneService.Domain.Model;
 using ProPhoneService.Domain.Repositories;
@@ -10,18 +9,18 @@ using ProPhoneService.Domain.Shared.Enum;
 namespace ProPhoneService.Application.Services;
 
 /// <summary>
-/// Создание заявки на ремонт: устройство + заказ + выбранные услуги.
+/// Создание заявки на ремонт: устройство, заказ и выбранные услуги
 /// Без входа заявка создаётся неподтверждённой (<see cref="RepairStatus.PendingContact"/>)
-/// и активируется кодом на email; авторизованный клиент привязывается сразу
+/// и активируется кодом из VK; авторизованный клиент привязывается сразу
 /// </summary>
 public class OrderCreationService(
     IRepository<Device> deviceRepository,
     IServiceRepository serviceRepository,
     IRepairOrderRepository orderRepository,
-    AuthService authService,
+    MessengerBindingService messengerBindings,
     TimeProvider timeProvider,
     IOptions<WorkshopOptions> workshopOptions,
-    ILogger<OrderCreationService> logger)
+    StatusNotificationService statusNotifications)
 {
     /// <summary>
     /// Создать заявку на ремонт
@@ -47,21 +46,10 @@ public class OrderCreationService(
             errors["PreferredVisitAt"] = [visitError];
         }
 
-        // Гостевую заявку подтверждают кодом на email: без email её не активировать
         var isGuest = clientId is null;
-        var contactEmail = request.Email;
-        if (isGuest)
+        if (!PhoneNormalizer.TryNormalize(request.Phone, out var phone))
         {
-            if (EmailNormalizer.TryNormalize(request.Email, out var normalizedEmail))
-            {
-                contactEmail = normalizedEmail;
-            }
-            else
-            {
-                errors["Email"] = [string.IsNullOrWhiteSpace(request.Email)
-                    ? "Укажите email - на него придёт код подтверждения заявки"
-                    : "Некорректный email"];
-            }
+            errors["Phone"] = ["Укажите телефон в формате +7XXXXXXXXXX"];
         }
 
         decimal totalPrice = 0;
@@ -102,8 +90,7 @@ public class OrderCreationService(
         var order = isGuest
             ? RepairOrder.CreatePending(
                 device.Id,
-                contactEmail!,
-                request.Phone,
+                phone,
                 preferredVisitAtUtc,
                 problemDescription)
             : RepairOrder.Create(
@@ -113,8 +100,7 @@ public class OrderCreationService(
                 problemDescription);
 
         order.ContactName = request.Name.Trim();
-        order.ContactEmail ??= contactEmail;
-        order.ContactPhone ??= request.Phone;
+        order.ContactPhone ??= phone;
         order.TotalPrice = totalPrice;
 
         foreach (var service in selectedServices)
@@ -131,21 +117,15 @@ public class OrderCreationService(
         await orderRepository.AddAsync(order, cancellationToken);
         await orderRepository.SaveChangesAsync(cancellationToken);
 
-        if (isGuest)
+        if (!isGuest)
         {
-            // Код подтверждения уходит на email заявки через INotifier;
-            // повторный код в пределах кулдауна не отправляется, но уже отправленный действует
-            try
-            {
-                await authService.RequestCodeAsync(contactEmail, cancellationToken);
-            }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
-            {
-                // Заявка сохранена; код можно повторно запросить через /api/auth/request-code
-                logger.LogWarning(exception, "Заказ {OrderId}: код подтверждения не отправлен", order.Id);
-            }
+            await statusNotifications.NotifyStatusChangedAsync(order, cancellationToken);
         }
 
-        return CreateOrderResult.Success(order.Id, isGuest);
+        var link = isGuest
+            ? await messengerBindings.CreateForOrderAsync(order.Id, MessengerChannel.Vk, cancellationToken)
+            : null;
+
+        return CreateOrderResult.Success(order.Id, isGuest, link, order.OrderNumber);
     }
 }
