@@ -5,19 +5,46 @@
 	import Button from '#lib/components/Button.svelte';
 	import { session } from '#lib/auth/session.svelte.ts';
 	import { isPhone } from '../../../../services/auth.ts';
-	import { isMockMode } from '../../../../services/api.ts';
+	import { fetchMyOrderById, isMockMode, ApiError } from '../../../../services/api.ts';
 
-	// Ссылка привязки и телефон приходят из ответа POST /api/orders (карточка 2 бека).
+	// Шаг подтверждения живёт в sessionStorage: телефон и одноразовая ссылка
+	// не попадают в историю браузера и access-логи; очищается после
+	// завершения или истечения срока.
+	interface ConfirmStep {
+		phone: string;
+		linkUrl: string | null;
+		linkExpiresAtUtc: string | null;
+		orderId: string;
+		orderNumber: string;
+	}
+	const STEP_KEY = 'pps-confirm-step';
+
+	function readStep(): ConfirmStep | null {
+		try {
+			const raw = sessionStorage.getItem(STEP_KEY);
+			if (raw) {
+				const step = JSON.parse(raw) as ConfirmStep;
+				if (step.phone && step.orderId) return step;
+			}
+		} catch {
+			// повреждённое состояние — считаем шаг недействительным
+		}
+		return null;
+	}
+
+	function clearStep(): void {
+		sessionStorage.removeItem(STEP_KEY);
+	}
+
 	const orderId = $derived(page.url.searchParams.get('id') ?? '');
 	const orderNumber = $derived(page.url.searchParams.get('number') ?? '');
-	const phoneParam = $derived(page.url.searchParams.get('phone') ?? '');
-	const linkParam = $derived(page.url.searchParams.get('link') ?? '');
-	const expiresParam = $derived(page.url.searchParams.get('expires') ?? '');
+	const step = readStep();
 
-	const phone = $derived(isPhone(phoneParam) ? phoneParam : '');
-	const messengerUrl = $derived(linkParam || (isMockMode ? 'https://vk.me/pro_phone_demo' : ''));
-	const linkExpiresAt = $derived(expiresParam ? new Date(expiresParam) : null);
-	const linkFresh = $derived(!linkExpiresAt || linkExpiresAt.getTime() > Date.now());
+	const phone = $derived(step && isPhone(step.phone) ? step.phone : '');
+	const messengerUrl = $derived(
+		(isMockMode && phone ? 'https://vk.me/pro_phone_demo' : (step?.linkUrl ?? ''))
+	);
+	const linkExpiresAt = $derived(step?.linkExpiresAtUtc ? new Date(step.linkExpiresAtUtc) : null);
 
 	let code = $state('');
 	let busy = $state(false);
@@ -66,17 +93,24 @@
 		}
 	}
 
-	// Автоотмена без подтверждения — 5 минут с момента создания заявки
-	// (PendingOrderExpirationService на беке); предупреждает только экран.
-	const deadline = $derived(Number(page.url.searchParams.get('created') ?? Date.now() + 5 * 60_000));
-	let leftSeconds = $state(300);
+	// Дедлайн — серверный expiresAtUtc ссылки привязки (не локальный старт):
+	// после перезагрузки отсчёт не начинается заново. Тикает интервал,
+	// потому что Date.now() внутри $derived сам не пересчитывается.
+	const deadlineMs = $derived(
+		linkExpiresAt && !Number.isNaN(linkExpiresAt.getTime()) ? linkExpiresAt.getTime() : 0
+	);
+	let leftSeconds = $state(0);
 
 	$effect(() => {
+		if (!deadlineMs) return;
+		leftSeconds = Math.max(0, Math.round((deadlineMs - Date.now()) / 1000));
 		const timer = setInterval(() => {
-			leftSeconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+			leftSeconds = Math.max(0, Math.round((deadlineMs - Date.now()) / 1000));
 		}, 1000);
 		return () => clearInterval(timer);
 	});
+
+	const linkExpired = $derived(deadlineMs > 0 && leftSeconds <= 0);
 
 	const leftText = $derived(
 		`${Math.floor(leftSeconds / 60)}:${String(leftSeconds % 60).padStart(2, '0')}`
@@ -85,6 +119,7 @@
 	function validate(): boolean {
 		formError = '';
 		if (!orderId || !phone) {
+			clearStep();
 			goto('/request');
 			return false;
 		}
@@ -101,9 +136,26 @@
 		try {
 			const authSession = await session.confirm(phone, code);
 			if (authSession.role === 'Master') {
+				clearStep();
 				goto('/master/orders');
 				return;
 			}
+			// Повторный код мог привязать прежний аккаунт: заявка остаётся
+			// PendingContact — success показываем только при активации.
+			try {
+				const order = await fetchMyOrderById(orderId);
+				if (order.status === null || order.status === 'PendingContact') {
+					formError = 'Заявка не активирована этим кодом. Оформите заявку заново.';
+					return;
+				}
+			} catch (error) {
+				const notFound = error instanceof ApiError && error.status === 404;
+				formError = notFound
+					? 'Заявка не активирована этим кодом. Оформите заявку заново.'
+					: error instanceof Error ? error.message : 'Не удалось проверить заявку.';
+				return;
+			}
+			clearStep();
 			// Заявка активирована: ведём в ЛК с номером и тайм-лайном.
 			goto(`/request/success?id=${encodeURIComponent(orderId)}&number=${encodeURIComponent(orderNumber)}`);
 		} catch (error) {
@@ -187,35 +239,48 @@
 					<li>Получите код и введите его на этом экране.</li>
 				</ol>
 
-				<a
-					class="messenger__open"
-					href={messengerUrl || '#'}
-					target="_blank"
-					rel="noopener noreferrer"
-					aria-disabled={!messengerUrl || !linkFresh}
-				>
-					<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-						<path
-							d="M12 2C6.48 2 2 6.48 2 12c0 5 3.66 9.13 8.44 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.23.19 2.23.19v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.45 2.89h-2.33v6.99C18.34 21.13 22 17 22 12c0-5.52-4.48-10-10-10z"
-							fill="currentColor"
-						/>
-					</svg>
-					Открыть VK
-				</a>
+				{#if messengerUrl && !linkExpired}
+					<a
+						class="messenger__open"
+						href={messengerUrl}
+						target="_blank"
+						rel="noopener noreferrer"
+					>
+						<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+							<path
+								d="M12 2C6.48 2 2 6.48 2 12c0 5 3.66 9.13 8.44 9.88v-6.99H7.9V12h2.54V9.8c0-2.5 1.49-3.89 3.77-3.89 1.09 0 2.23.19 2.23.19v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56V12h2.78l-.45 2.89h-2.33v6.99C18.34 21.13 22 17 22 12c0-5.52-4.48-10-10-10z"
+								fill="currentColor"
+							/>
+						</svg>
+						Открыть VK
+					</a>
+				{:else}
+					<!-- Истёкшая ссылка без href: клик не откроет мёртвый токен. -->
+					<span class="messenger__open messenger__open--expired">
+						Открыть VK
+					</span>
+					<p class="messenger__expired">
+						Срок действия ссылки истёк — оформите заявку заново.
+					</p>
+					<Button
+						type="button"
+						variant="secondary"
+						onclick={() => {
+							clearStep();
+							goto('/request');
+						}}
+					>
+						Новая заявка
+					</Button>
+				{/if}
 
 				<div class="messenger__note">
-					<strong>5 минут на подтверждение</strong>
+					<strong>Время на подтверждение: {leftText}</strong>
 					<p>
-						Если не подтвердить заявку за {leftText} — она автоматически отменится.
+						Если не подтвердить заявку за отведённое время — она автоматически отменится.
 						Отдельное сообщение об отмене не придёт, просто оформите заявку заново.
 					</p>
 				</div>
-
-				{#if !linkFresh}
-					<p class="messenger__expired">
-						Срок действия ссылки привязки истёк — запросите код повторно.
-					</p>
-				{/if}
 			</div>
 		</aside>
 	</div>
@@ -376,6 +441,11 @@
 	}
 
 	.messenger__note p {
+		color: var(--muted);
+	}
+
+	.messenger__open--expired {
+		background: var(--bg);
 		color: var(--muted);
 	}
 

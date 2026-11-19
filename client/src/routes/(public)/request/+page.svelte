@@ -15,9 +15,9 @@
 	import {
 		ApiError,
 		createOrder,
-		fetchMessengerOrderLink,
 		fetchServices,
 		isMockMode,
+		isOrderActiveForClient,
 		type CreateOrderPayload,
 		type CreateOrderResult,
 		type ServiceDto
@@ -47,8 +47,21 @@
 	let vkPhase = $state<'idle' | 'creating' | 'awaiting' | 'confirming'>('idle');
 	let vkOrderId = $state('');
 	let vkOrderNumber = $state('');
+	let vkPhone = $state('');
 	let vkLink = $state<{ url: string; expiresAtUtc: string } | null>(null);
-	let vkLinkFresh = $derived(!!vkLink && new Date(vkLink.expiresAtUtc).getTime() > Date.now());
+	/** Серверный дедлайн привязки (expiresAtUtc) в тиках; двигает таймер. */
+	let nowTick = $state(Date.now());
+	let linkTimerId: ReturnType<typeof setInterval> | null = null;
+	$effect(() => {
+		if (linkTimerId) return;
+		linkTimerId = setInterval(() => (nowTick = Date.now()), 1000);
+		return () => {
+			if (linkTimerId) clearInterval(linkTimerId);
+			linkTimerId = null;
+		};
+	});
+	let vkLinkFresh = $derived(!!vkLink && new Date(vkLink.expiresAtUtc).getTime() > nowTick);
+	/** Остаток до серверного дедлайна — тикает, потому что nowTick меняется. */
 	let vkCode = $state('');
 	let vkBusy = $state(false);
 	let vkError = $state('');
@@ -86,7 +99,6 @@
 	});
 
 	// ── Validation: mirrors the backend (phone is the only contact) ────────
-	const contactValue = $derived(contact.trim());
 	const phoneDigits = $derived(contact.replace(/\D/g, ''));
 	const phoneValid = $derived(
 		/^\+7\d{10}$/.test(`+7${phoneDigits.slice(1)}`) && phoneDigits.length === 11
@@ -245,9 +257,27 @@
 			const result = await createOrder(payload);
 			vkOrderId = result.id;
 			vkOrderNumber = result.orderNumber;
-			if (result.messengerLink) {
-				vkLink = { url: result.messengerLink.url, expiresAtUtc: result.messengerLink.expiresAtUtc };
+			vkPhone = orderPhone;
+			// Авторизованный клиент получает заявку сразу: подтверждение не
+			// требуется, ссылка null — ведём на success после проверки активации.
+			if (!result.requiresContactConfirmation) {
+				vkPhase = 'idle';
+				const activated = await isOrderActiveForClient(vkOrderId);
+				if (activated) {
+					await goto(
+						`/request/success?id=${encodeURIComponent(vkOrderId)}&number=${encodeURIComponent(vkOrderNumber)}`
+					);
+				} else {
+					vkError = 'Заявка не активирована. Оформите заявку заново.';
+				}
+				return;
 			}
+			if (!result.messengerLink) {
+				vkPhase = 'idle';
+				messengerUnavailable = true;
+				return;
+			}
+			vkLink = { url: result.messengerLink.url, expiresAtUtc: result.messengerLink.expiresAtUtc };
 			vkPhase = 'awaiting';
 			startVkResendTimer();
 			if (isMockMode) showToast('Демо-режим: подойдёт любой 6-значный код из VK', 'info');
@@ -260,20 +290,6 @@
 			} else {
 				vkError = error instanceof Error ? error.message : 'Не удалось начать подключение VK.';
 			}
-		}
-	}
-
-	/** Повторная ссылка привязки, если старая протухла (бек: POST messengers/link). */
-	async function refreshVkLink(): Promise<void> {
-		if (!vkOrderId || vkBusy) return;
-		vkBusy = true;
-		try {
-			const link = await fetchMessengerOrderLink(vkOrderId);
-			if (link) vkLink = { url: link.url, expiresAtUtc: link.expiresAtUtc };
-		} catch {
-			showToast('Не удалось обновить ссылку. Попробуйте ещё раз.', 'error');
-		} finally {
-			vkBusy = false;
 		}
 	}
 
@@ -314,9 +330,17 @@
 		vkBusy = true;
 		vkError = '';
 		try {
-			const authSession = await session.confirm(`+7${phoneDigits.slice(1)}`, vkCode);
+			const authSession = await session.confirm(vkPhone || `+7${phoneDigits.slice(1)}`, vkCode);
 			if (authSession.role === 'Master') {
 				goto('/master/orders');
+				return;
+			}
+			// Повторный код мог авторизовать прежний аккаунт: новая гостевая
+			// заявка остаётся PendingContact. В success идём только если
+			// конкретная заявка доступна клиенту и активирована.
+			const activated = await isOrderActiveForClient(vkOrderId);
+			if (!activated) {
+				vkError = 'Заявка не активирована этим кодом. Оформите заявку заново.';
 				return;
 			}
 			await goto(
@@ -409,12 +433,13 @@
 			const param = new URLSearchParams({
 				id: result.id,
 				number: result.orderNumber,
-				phone: orderPhone
+				...(result.messengerLink
+					? {
+							link: result.messengerLink.url,
+							expires: result.messengerLink.expiresAtUtc
+						}
+					: {})
 			});
-			if (result.messengerLink) {
-				param.set('link', result.messengerLink.url);
-				param.set('expires', result.messengerLink.expiresAtUtc);
-			}
 			await goto(`/request/confirm?${param}`);
 			return;
 		}
@@ -640,8 +665,15 @@
 								Открыть VK
 							</button>
 						{:else}
-							<button type="button" class="vk-panel__open" disabled={vkBusy} onclick={refreshVkLink}>
-								{vkBusy ? 'Обновляем…' : 'Ссылка истекла — получить новую'}
+							<button
+								type="button"
+								class="vk-panel__open vk-panel__open--expired"
+								onclick={() => {
+									vkPhase = 'idle';
+									vkError = 'Срок действия ссылки привязки истёк — оформите заявку заново.';
+								}}
+							>
+								Ссылка истекла
 							</button>
 						{/if}
 					</div>
@@ -1209,7 +1241,8 @@
 		font-weight: 600;
 	}
 
-	.vk-panel__open:disabled {
+	.vk-panel__open:disabled,
+	.vk-panel__open--expired {
 		opacity: 0.6;
 	}
 

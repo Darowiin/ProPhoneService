@@ -58,15 +58,13 @@ export function rememberPhone(phone: string): void {
 
 export async function requestCode(phone: string): Promise<void> {
 	if (isMockMode) {
+		// Имитация отправки только в мок-режиме; реальный API отдаёт ошибки
+		// наверх — молчаливый «успех» уводил бы пользователя на код-экран
+		// без отправки кода.
 		await delay(300);
 		return;
 	}
-	try {
-		await request<void>('/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) });
-	} catch (error) {
-		if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return;
-		throw error;
-	}
+	await request<void>('/auth/request-code', { method: 'POST', body: JSON.stringify({ phone }) });
 }
 
 export async function confirm(phone: string, code: string): Promise<AuthSession> {

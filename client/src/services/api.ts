@@ -481,9 +481,14 @@ export async function fetchOrders(options: FetchOrdersOptions = {}): Promise<Rep
 	}
 
 	// The list DTO carries no client/problem/price; the detail endpoint does.
-	// Warm them for the loaded rows (V3 panel shows client, problem, price).
+	// Детали догружаются дозированно: nginx держит отдельную очередь
+	// (api_details, 30/мин, burst 25 без nodelay), поэтому параллельный
+	// прогрев не выжигает квоту создания и не ловит 429.
 	await Promise.all(
-		result.map(async (order) => {
+		result.map(async (order, index) => {
+			// мягкая волна: следующая пачка деталей стартует с разницей,
+			// чтобы попасть в средний темп очереди
+			await delay(200 * (index % 8));
 			try {
 				const detail = await request<BackendOrderDetailDto>(`/orders/${order.id}`);
 				order.clientName = detail.client?.name ?? detail.contactName ?? null;
@@ -697,33 +702,22 @@ export async function createOrder(payload: CreateOrderPayload): Promise<CreateOr
 		id: result.id,
 		orderNumber: result.orderNumber,
 		requiresContactConfirmation: Boolean(result.requiresContactConfirmation),
-		messengerLink: result.messengerLink
-			? {
-					channel: 'Vk',
-					url: result.messengerLink.url,
-					expiresAtUtc: result.messengerLink.expiresAtUtc
-				}
-			: null,
+		messengerLink: adaptMessengerLink(result.messengerLink),
 		status: null
 	};
 }
 
-/** Повторная ссылка привязки VK для созданной заявки
- *  (POST /api/messengers/orders/{id}/link — карточка 1 бека). */
-export async function fetchMessengerOrderLink(orderId: string): Promise<MessengerLinkDto | null> {
-	if (isMockMode) {
-		await delay(300);
-		return {
-			channel: 'Vk',
-			url: 'https://vk.me/pro_phone_demo',
-			expiresAtUtc: new Date(Date.now() + 15 * 60_000).toISOString()
-		};
-	}
-	const raw = await request<{ channel: string; url: string; expiresAtUtc: string } | null>(
-		`/messengers/orders/${encodeURIComponent(orderId)}/link`,
-		{ method: 'POST', body: JSON.stringify({ channel: 'Vk' }) }
-	);
-	return raw ? { channel: 'Vk', url: raw.url, expiresAtUtc: raw.expiresAtUtc } : null;
+/** Проверка сырой ссылки от API: канал VK, HTTPS-хост vk.me, валидный срок.
+ *  Некорректная ссылка превращается в null — интерфейс уведёт в офлайн-сценарий,
+ *  поддельный канал подставиться не может. */
+function adaptMessengerLink(
+	raw: { channel: string; url: string; expiresAtUtc: string } | null
+): MessengerLinkDto | null {
+	if (!raw || raw.channel !== 'Vk') return null;
+	if (!/^https:\/\/vk\.me\//.test(raw.url)) return null;
+	const expires = new Date(raw.expiresAtUtc);
+	if (Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) return null;
+	return { channel: 'Vk', url: raw.url, expiresAtUtc: raw.expiresAtUtc };
 }
 
 export async function changeOrderStatus(orderId: string, next: RepairStatus): Promise<void> {
@@ -813,27 +807,22 @@ export async function fetchMyOrders(): Promise<AccountOrderDto[]> {
 	}
 
 	const items = await request<BackendOrderListItemLike[]>('/me/orders');
-	const result = items.map(mapMeOrder);
+	// Без прогрева деталей каждой строки: карточка запрашивает деталь при
+	// открытии — страница из 25 заявок не тратит квоту деталей (nginx 30/мин
+	// на /orders/{id}) и не ловит 429 на чтении списков.
+	return items.map(mapMeOrder);
+}
 
-	// List DTO carries no services/price — warm the card data per row.
-	await Promise.all(
-		result.map(async (order) => {
-			try {
-				const detail = await request<BackendOrderDetailDto>(`/me/orders/${encodeURIComponent(order.id)}`);
-				order.repair = detail.services.map((service) => service.name).join(', ') || 'Замена / ремонт';
-				order.price = Number(detail.totalPrice);
-				order.clientName = detail.client?.name ?? detail.contactName ?? null;
-				order.clientPhone = detail.client?.phone ?? null;
-				order.timeline = detail.statusTimeline.map((history) => ({
-					label: history.statusName || statusLabels[history.status],
-					at: new Date(history.changedAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-				}));
-			} catch {
-				// keep the row as-is
-			}
-		})
-	);
-	return result;
+/** Проверка перед success-экраном: заявка доступна клиенту и активирована
+ *  (карточка 10: повторный код мог авторизовать прежний аккаунт). */
+export async function isOrderActiveForClient(orderId: string): Promise<boolean> {
+	try {
+		const order = await fetchMyOrderById(orderId);
+		return order.status !== null && order.status !== 'PendingContact';
+	} catch {
+		// 404/ошибка — заявка недоступна этому клиенту
+		return false;
+	}
 }
 
 export async function fetchMyOrderById(id: string): Promise<AccountOrderDto> {

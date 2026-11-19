@@ -3,7 +3,6 @@
 	import Button from '#lib/components/Button.svelte';
 	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, getWorkshopStatus } from '../../mocks/db.ts';
 	import YandexWidgets from '#lib/components/YandexWidgets.svelte';
-	import { yandexWidgets } from '#config/yandex-widgets.ts';
 
 	const workshopStatus = getWorkshopStatus();
 	const isOpen = workshopStatus.isOpen;
