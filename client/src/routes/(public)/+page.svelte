@@ -183,17 +183,23 @@
 		{:else}
 			<!-- Реальные данные организации: рейтинг-плитка + публичные ссылки -->
 			<div class="reviews-live">
-				<a
-					class="reviews-live__card"
-					href={yandexWidgets.reviewsUrl}
-					target="_blank"
-					rel="noreferrer"
-				>
-					<span class="reviews-live__rating">{yandexWidgets.rating}</span>
-					<span class="reviews-live__stars" aria-hidden="true">★★★★☆</span>
-					<span class="reviews-live__count">{yandexWidgets.ratingsCount} оценок на Яндекс.Картах</span>
-					<span class="reviews-live__cta">Читать и оставить отзыв ↗</span>
-				</a>
+				<div class="reviews-live__side">
+					<a
+						class="reviews-live__card"
+						href={yandexWidgets.reviewsUrl}
+						target="_blank"
+						rel="noreferrer"
+					>
+						<span class="reviews-live__rating">{yandexWidgets.rating}</span>
+						<span class="reviews-live__stars" aria-hidden="true">★★★★☆</span>
+						<span class="reviews-live__count">{yandexWidgets.ratingsCount} оценок на Яндекс.Картах</span>
+						<span class="reviews-live__cta">Читать и оставить отзыв ↗</span>
+					</a>
+					<Button href="/request" size="lg">Оставить заявку ↗</Button>
+					<p class="reviews-live__fallback">
+						Карта не загрузилась? <a href={yandexWidgets.reviewsUrl} target="_blank" rel="noreferrer">Открыть организацию на Яндексе</a>.
+					</p>
+				</div>
 
 				<div class="reviews-live__map">
 					<iframe
@@ -203,23 +209,9 @@
 						loading="lazy"
 						allowfullscreen
 					></iframe>
-					<p class="reviews-live__fallback">
-						Карта не загрузилась? <a href={yandexWidgets.reviewsUrl} target="_blank" rel="noreferrer">Открыть организацию на Яндексе</a>.
-					</p>
 				</div>
 			</div>
 		{/if}
-	</div>
-</section>
-
-<!-- ================= CTA ================= -->
-<section class="section cta-section">
-	<div class="container cta-section__inner">
-		<div class="cta-section__copy">
-			<h2 class="cta-section__title">Починим телефон. Освободим ваш день.</h2>
-			<p class="cta-section__text">Оставьте заявку — всё остальное возьмём на себя.</p>
-		</div>
-		<Button href="/request" size="lg">Оставить заявку ↗</Button>
 	</div>
 </section>
 
@@ -479,7 +471,17 @@
 		display: grid;
 		grid-template-columns: minmax(0, 0.55fr) minmax(0, 1.45fr);
 		gap: 24px;
-		align-items: start;
+		align-items: stretch;
+	}
+
+	.reviews-live__side {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.reviews-live__side :global(.button) {
+		width: 100%;
 	}
 
 	.reviews-live__card {
@@ -517,24 +519,28 @@
 	}
 
 	.reviews-live__cta {
-		margin-top: 10px;
+		margin-top: 6px;
 		font-size: 14px;
 		font-weight: 600;
 		color: var(--accent);
 	}
 
+
 	.reviews-live__map {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		min-height: 0;
 	}
 
 	.reviews-live__iframe {
 		width: 100%;
-		min-height: 320px;
+		height: 100%;
+		flex: 1;
+		min-height: 0;
 		border: 0;
 		border-radius: 20px;
 	}
+
 
 	.reviews-live__fallback {
 		font-size: 12px;
@@ -663,44 +669,6 @@
 		color: var(--muted);
 	}
 
-	/* ---------- CTA ---------- */
-	.cta-section {
-		padding-block: 40px 72px;
-	}
-
-	.cta-section__inner {
-		background: var(--accent);
-		color: #ffffff;
-		border-radius: 24px;
-		padding: 48px 56px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 32px;
-	}
-
-	.cta-section__title {
-		font-size: clamp(26px, 3vw, 38px);
-		font-weight: 700;
-		letter-spacing: -0.02em;
-	}
-
-	.cta-section__text {
-		font-size: 15px;
-		opacity: 0.85;
-		margin-top: 10px;
-	}
-
-	.cta-section :global(.btn--primary) {
-		background: #ffffff;
-		color: var(--accent);
-		flex-shrink: 0;
-	}
-
-	.cta-section :global(.btn--primary:hover) {
-		background: var(--bg);
-	}
-
 	/* ---------- Responsive ---------- */
 	@media (max-width: 1024px) {
 		.steps {
@@ -747,11 +715,6 @@
 			grid-template-columns: 1fr;
 		}
 
-		.cta-section__inner {
-			padding: 32px 24px;
-			flex-direction: column;
-			align-items: flex-start;
-		}
 
 		.hero__title br {
 			display: none;
