@@ -2,7 +2,8 @@
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
 	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, getWorkshopStatus } from '../../mocks/db.ts';
-	import YandexWidgets from '#lib/components/YandexWidgets.svelte';
+	import { yandexWidgets } from '#config/yandex-widgets.ts';
+	import { isMockMode } from '../../services/api.ts';
 
 	const workshopStatus = getWorkshopStatus();
 	const isOpen = workshopStatus.isOpen;
@@ -101,8 +102,8 @@
 					<dt class="stat__label">{workshopStats.savedLabel}</dt>
 				</div>
 				<div class="stat">
-					<dd class="stat__value">{workshopStats.rating}</dd>
-					<dt class="stat__label">{workshopStats.ratingLabel}</dt>
+					<dd class="stat__value">{yandexWidgets.rating}</dd>
+					<dt class="stat__label">оценка на Яндекс</dt>
 				</div>
 			</dl>
 			<div class="about__master">
@@ -139,45 +140,75 @@
 	</div>
 </section>
 
-<!-- ================= Reviews ================= -->
+<!-- ================= Reviews & map (card 12: real Yandex data) ================= -->
 <section class="section reviews-section">
 	<div class="container">
-		<YandexWidgets>
 		<div class="reviews-head">
 			<h2 class="h2">Нас советуют своим</h2>
 			<p class="reviews-head__rating">
 				<span class="reviews-head__stars" aria-hidden="true">★</span>
 				<a
 					class="reviews-head__link"
-					href="https://yandex.ru/maps/?text={encodeURIComponent(workshop.address)}"
+					href={yandexWidgets.reviewsUrl}
 					target="_blank"
 					rel="noreferrer"
 				>
-					{workshopStats.rating.replace(' / 5', '')} · {workshopStats.reviewsCount} отзывов на Яндекс ↗
+					{yandexWidgets.rating} · {yandexWidgets.ratingsCount} оценок на Яндекс ↗
 				</a>
 			</p>
 		</div>
-		<div class="reviews">
-			{#each showcase as review (review.id)}
-				<article class="review">
-					<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{stars(review.rating)}</p>
-					<p class="review__text" class:review__text--clamped={expanded !== review.id && review.text.length > 140}>
-						{review.text}
+
+		{#if isMockMode}
+			<!-- Демо без API: детерминированные отзывы остаются как страховка показа -->
+			<div class="reviews">
+				{#each showcase as review (review.id)}
+					<article class="review">
+						<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{stars(review.rating)}</p>
+						<p class="review__text" class:review__text--clamped={expanded !== review.id && review.text.length > 140}>
+							{review.text}
+						</p>
+						{#if review.text.length > 140 && expanded !== review.id}
+							<button class="review__more" type="button" onclick={() => (expanded = review.id)}>читать полностью</button>
+						{/if}
+						<footer class="review__footer">
+							<span class="review__avatar" aria-hidden="true">{review.author.slice(0, 1)}{review.author.split(' ')[1]?.[0] ?? ''}</span>
+							<div class="review__meta">
+								<span class="review__author">{review.author}</span>
+								<span class="review__date">{review.date}</span>
+							</div>
+						</footer>
+					</article>
+				{/each}
+			</div>
+		{:else}
+			<!-- Реальные данные организации: рейтинг-плитка + публичные ссылки -->
+			<div class="reviews-live">
+				<a
+					class="reviews-live__card"
+					href={yandexWidgets.reviewsUrl}
+					target="_blank"
+					rel="noreferrer"
+				>
+					<span class="reviews-live__rating">{yandexWidgets.rating}</span>
+					<span class="reviews-live__stars" aria-hidden="true">★★★★☆</span>
+					<span class="reviews-live__count">{yandexWidgets.ratingsCount} оценок на Яндекс.Картах</span>
+					<span class="reviews-live__cta">Читать и оставить отзыв ↗</span>
+				</a>
+
+				<div class="reviews-live__map">
+					<iframe
+						class="reviews-live__iframe"
+						src={yandexWidgets.mapUrl}
+						title="Карта: мастерская «про телефон», Самара, проспект Ленина, 12А"
+						loading="lazy"
+						allowfullscreen
+					></iframe>
+					<p class="reviews-live__fallback">
+						Карта не загрузилась? <a href={yandexWidgets.reviewsUrl} target="_blank" rel="noreferrer">Открыть организацию на Яндексе</a>.
 					</p>
-					{#if review.text.length > 140 && expanded !== review.id}
-						<button class="review__more" type="button" onclick={() => (expanded = review.id)}>читать полностью</button>
-					{/if}
-					<footer class="review__footer">
-						<span class="review__avatar" aria-hidden="true">{review.author.slice(0, 1)}{review.author.split(' ')[1]?.[0] ?? ''}</span>
-						<div class="review__meta">
-							<span class="review__author">{review.author}</span>
-							<span class="review__date">{review.date}</span>
-						</div>
-					</footer>
-				</article>
-			{/each}
-		</div>
-		</YandexWidgets>
+				</div>
+			</div>
+		{/if}
 	</div>
 </section>
 
@@ -441,6 +472,77 @@
 		line-height: 1.6;
 		color: var(--muted);
 		margin-top: 10px;
+	}
+
+	/* ---------- Reviews (card 12: real Yandex) ---------- */
+	.reviews-live {
+		display: grid;
+		grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+		gap: 24px;
+		align-items: stretch;
+	}
+
+	.reviews-live__card {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		gap: 10px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		padding: 32px;
+		text-decoration: none;
+		transition: border-color 0.15s ease, transform 0.15s ease;
+	}
+
+	.reviews-live__card:hover {
+		border-color: var(--accent);
+		transform: translateY(-2px);
+	}
+
+	.reviews-live__rating {
+		font-size: 44px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+	}
+
+	.reviews-live__stars {
+		color: var(--warning);
+		letter-spacing: 3px;
+	}
+
+	.reviews-live__count {
+		color: var(--muted);
+		font-size: 14px;
+	}
+
+	.reviews-live__cta {
+		margin-top: 10px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--accent);
+	}
+
+	.reviews-live__map {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+
+	.reviews-live__iframe {
+		width: 100%;
+		min-height: 320px;
+		border: 0;
+		border-radius: 20px;
+	}
+
+	.reviews-live__fallback {
+		font-size: 12px;
+		color: var(--muted);
+	}
+
+	.reviews-live__fallback a {
+		color: var(--accent);
 	}
 
 	/* ---------- Reviews ---------- */
