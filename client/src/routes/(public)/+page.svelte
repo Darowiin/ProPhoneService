@@ -196,9 +196,6 @@
 						<span class="reviews-live__cta">Читать и оставить отзыв ↗</span>
 					</a>
 					<Button href="/request" size="lg">Оставить заявку ↗</Button>
-					<p class="reviews-live__fallback">
-						Карта не загрузилась? <a href={yandexWidgets.reviewsUrl} target="_blank" rel="noreferrer">Открыть организацию на Яндексе</a>.
-					</p>
 				</div>
 
 				<div class="reviews-live__map">
@@ -481,6 +478,10 @@
 	}
 
 	.reviews-live__side :global(.button) {
+		margin-top: auto;
+	}
+
+	.reviews-live__side :global(.button) {
 		width: 100%;
 	}
 
@@ -542,14 +543,7 @@
 	}
 
 
-	.reviews-live__fallback {
-		font-size: 12px;
-		color: var(--muted);
-	}
 
-	.reviews-live__fallback a {
-		color: var(--accent);
-	}
 
 	/* ---------- Reviews ---------- */
 	.reviews-section {
