@@ -477,20 +477,19 @@
 	/* ---------- Reviews (card 12: real Yandex) ---------- */
 	.reviews-live {
 		display: grid;
-		grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+		grid-template-columns: minmax(0, 0.55fr) minmax(0, 1.45fr);
 		gap: 24px;
-		align-items: stretch;
+		align-items: start;
 	}
 
 	.reviews-live__card {
 		display: flex;
 		flex-direction: column;
-		justify-content: center;
-		gap: 10px;
+		gap: 8px;
 		background: var(--surface);
 		border: 1px solid var(--border);
 		border-radius: 20px;
-		padding: 32px;
+		padding: 24px 26px;
 		text-decoration: none;
 		transition: border-color 0.15s ease, transform 0.15s ease;
 	}
@@ -501,9 +500,10 @@
 	}
 
 	.reviews-live__rating {
-		font-size: 44px;
+		font-size: 32px;
 		font-weight: 800;
 		letter-spacing: -0.02em;
+		line-height: 1;
 	}
 
 	.reviews-live__stars {
