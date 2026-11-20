@@ -13,8 +13,8 @@
 	let profilePhone = $state<string | null>(null);
 
 	const ready = $derived(session.ready && !!session.user);
-	const displayName = $derived(profileName ?? session.user?.email ?? '');
-	const contactText = $derived(profilePhone ?? session.user?.email ?? '');
+	const displayName = $derived(profileName ?? session.user?.phone ?? '');
+	const contactText = $derived(profilePhone ?? session.user?.phone ?? '');
 
 	let orders = $state<AccountOrderDto[]>([]);
 	let loading = $state(true);

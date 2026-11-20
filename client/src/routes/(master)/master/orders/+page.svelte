@@ -47,7 +47,7 @@
 				const q = query.trim().toLowerCase();
 				if (!q) return true;
 				return (
-					o.number.toLowerCase().includes(q) ||
+					o.orderNumber.toLowerCase().includes(q) ||
 					(o.clientName?.toLowerCase().includes(q) ?? false) ||
 					o.deviceName.toLowerCase().includes(q)
 				);
@@ -65,9 +65,8 @@
 	const chips = $derived<{ id: StatusFilter; label: string; count: number }[]>([
 		{ id: 'all', label: 'Все', count: orders.length },
 		{ id: 'Created', label: 'Принята', count: stats?.statusCounts.Created ?? 0 },
-		{ id: 'InDiagnostic', label: 'Диагностика', count: stats?.statusCounts.InDiagnostic ?? 0 },
 		{ id: 'InProgress', label: 'В ремонте', count: stats?.statusCounts.InProgress ?? 0 },
-		{ id: 'Ready', label: 'Готово', count: stats?.statusCounts.Ready ?? 0 }
+		{ id: 'Ready', label: 'Готов к выдаче', count: stats?.statusCounts.Ready ?? 0 }
 	]);
 
 	// ── Date filter (sprint-2 card 15) ─────────────────────────────────────
@@ -144,7 +143,7 @@
 	}
 
 	function displayReference(order: RepairOrderDto): string {
-		return order.id === order.number ? order.id.slice(0, 8).toUpperCase() : order.number;
+		return order.orderNumber || order.id;
 	}
 
 	// ── Formatting ──────────────────────────────────────────────────────────

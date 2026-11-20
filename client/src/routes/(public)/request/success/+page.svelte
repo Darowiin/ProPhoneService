@@ -7,11 +7,12 @@
 	import { fetchOrderById } from '../../../../services/api.ts';
 	import { workshop } from '../../../../mocks/db.ts';
 
-	// The identifier stays internal: the client sees the recap, not the order id.
-	const orderId = $derived(page.url.searchParams.get('id') ?? '');
-
+	// The Guid stays internal for routes; the client sees the order number.
 	let order = $state<RepairOrderDto | null>(null);
 	let notFound = $state(false);
+	const orderId = $derived(page.url.searchParams.get('id') ?? '');
+	const orderNumberParam = $derived(page.url.searchParams.get('number') ?? '');
+	const orderNumber = $derived(order?.orderNumber || orderNumberParam);
 
 	$effect(() => {
 		if (!orderId) {
@@ -55,7 +56,9 @@
 				</svg>
 			</div>
 
-			<h1 class="title">Заявка принята</h1>
+			<h1 class="title">
+				{orderNumber ? `Заявка №${orderNumber} принята` : 'Заявка принята'}
+			</h1>
 
 			<p class="text">
 				Мы сохранили заявку. Мастер проведёт бесплатную диагностику и подтвердит стоимость.
@@ -63,6 +66,9 @@
 			</p>
 
 			<dl class="recap">
+				{#if orderNumber}
+					<div><dt>Номер заявки</dt><dd>{orderNumber}</dd></div>
+				{/if}
 				{#if device}
 					<div><dt>Устройство</dt><dd>{device}</dd></div>
 				{/if}

@@ -26,7 +26,7 @@ function persist(user: AuthSession | null): void {
 	if (!browser) return;
 	if (user) {
 		const stored: StoredSession = {
-			email: user.email,
+			phone: user.phone,
 			role: user.role,
 			clientId: user.clientId,
 			accessTokenExpiresAtUtc: user.accessTokenExpiresAtUtc
@@ -38,7 +38,7 @@ function persist(user: AuthSession | null): void {
 }
 
 interface StoredSession {
-	email: string;
+	phone: string;
 	role: AuthSession['role'];
 	clientId: string | null;
 	/** Expiry timestamp only — the bearer token itself is not persisted. */
@@ -61,20 +61,20 @@ async function restoreOnce(): Promise<void> {
 		// it to decide the redirect and would otherwise see an empty user for
 		// the whole await and bounce the reloading user to /login.
 		if (!stored) return;
-		auth.rememberEmail(stored.email);
+		auth.rememberPhone(stored.phone);
 		if (isMockMode) {
 			// No refresh cookie exists without a backend: rebuild the session so
 			// the mock flow can survive a reload. The token is a placeholder, so
 			// re-creating it exposes nothing.
 			current = {
-				email: stored.email,
+				phone: stored.phone,
 				role: stored.role,
 				clientId: stored.clientId,
 				accessToken: 'mock-access-token',
 				accessTokenExpiresAtUtc: stored.accessTokenExpiresAtUtc
 			};
 		} else {
-			const refreshed = await auth.refresh(stored.email);
+			const refreshed = await auth.refresh(stored.phone);
 			if (refreshed) {
 				current = refreshed;
 				persist(refreshed);
@@ -101,19 +101,19 @@ export const session = {
 	get role(): AuthSession['role'] | null {
 		return current?.role ?? null;
 	},
-	start(email: string, authSession: AuthSession): void {
-		auth.rememberEmail(email);
+	start(phone: string, authSession: AuthSession): void {
+		auth.rememberPhone(phone);
 		current = authSession;
 		persist(authSession);
 	},
-	/** Requests a one-time code to the given email. */
-	requestCode(email: string): Promise<void> {
-		auth.rememberEmail(email);
-		return auth.requestCode(email);
+	/** Requests a one-time code for the given phone through VK. */
+	requestCode(phone: string): Promise<void> {
+		auth.rememberPhone(phone);
+		return auth.requestCode(phone);
 	},
 	/** Exchanges the code for tokens and signs the user in. */
-	async confirm(email: string, code: string): Promise<AuthSession> {
-		const authSession = await auth.confirm(email, code);
+	async confirm(phone: string, code: string): Promise<AuthSession> {
+		const authSession = await auth.confirm(phone, code);
 		current = authSession;
 		persist(authSession);
 		return authSession;

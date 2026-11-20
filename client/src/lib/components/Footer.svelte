@@ -101,16 +101,16 @@
 		gap: 8px;
 	}
 
+	.footer__telegram {
+		font-size: 13px;
+		color: var(--accent);
+	}
+
 	.footer__phone {
 		font-size: 17px;
 		font-weight: 600;
 	}
 
-	.footer__telegram {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--accent);
-	}
 
 	.footer__bottom {
 		display: flex;

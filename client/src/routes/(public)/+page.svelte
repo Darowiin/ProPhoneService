@@ -1,7 +1,9 @@
 <script lang="ts">
 	import Eyebrow from '#lib/components/Eyebrow.svelte';
 	import Button from '#lib/components/Button.svelte';
-	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, heroTrust, heroBadge, getWorkshopStatus } from '../../mocks/db.ts';
+	import { workshop, workshopStats, masterProfile, aboutText, steps, reviews, getWorkshopStatus } from '../../mocks/db.ts';
+	import { yandexWidgets } from '#config/yandex-widgets.ts';
+	import { isMockMode } from '../../services/api.ts';
 
 	const workshopStatus = getWorkshopStatus();
 	const isOpen = workshopStatus.isOpen;
@@ -27,7 +29,7 @@
 <section class="hero">
 	<div class="container hero__inner">
 		<div class="hero__content">
-			<Eyebrow dot tone="muted">Ремонт телефонов на Покровке</Eyebrow>
+			<Eyebrow dot tone="muted">Ремонт телефонов — мастерская рядом</Eyebrow>
 			<h1 class="hero__title">Телефон снова в деле.<br /><span class="hero__title-accent">Вы — на связи.</span></h1>
 			<p class="hero__subtitle">
 				Сломался телефон? Оставьте заявку без звонка. Узнайте цену заранее и отслеживайте ремонт онлайн.
@@ -36,44 +38,9 @@
 				<Button href="/request" size="lg">Оставить заявку ↗</Button>
 				<Button href="/price" variant="secondary" size="lg">Посмотреть цены</Button>
 			</div>
-			<ul class="hero__trust">
-				{#each heroTrust as item (item.title)}
-					<li class="trust-item">
-						<span class="trust-item__check" aria-hidden="true">
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-								<path
-									d="m5 12.5 4.5 4.5L19 7.5"
-									stroke="currentColor"
-									stroke-width="2.4"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-						</span>
-						{item.title}
-					</li>
-				{/each}
-			</ul>
 		</div>
 		<div class="hero__photo">
 			<img src="/hero.jpg" alt="Мастер ремонтирует телефон в мастерской" />
-			<div class="hero__badge">
-				<span class="hero__badge-icon" aria-hidden="true">
-					<svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-						<path
-							d="M12 3 5 5.5V12c0 4.4 3 7.4 7 9 4-1.6 7-4.6 7-9V5.5L12 3Z"
-							stroke="currentColor"
-							stroke-width="1.8"
-							stroke-linejoin="round"
-						/>
-						<path d="m9 12 2.2 2.2L15.5 9.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-					</svg>
-				</span>
-				<div class="hero__badge-text">
-					<p class="hero__badge-title">{heroBadge.title}</p>
-					<p class="hero__badge-subtitle">{heroBadge.subtitle}</p>
-				</div>
-			</div>
 		</div>
 	</div>
 
@@ -135,8 +102,8 @@
 					<dt class="stat__label">{workshopStats.savedLabel}</dt>
 				</div>
 				<div class="stat">
-					<dd class="stat__value">{workshopStats.rating}</dd>
-					<dt class="stat__label">{workshopStats.ratingLabel}</dt>
+					<dd class="stat__value">{yandexWidgets.rating}</dd>
+					<dt class="stat__label">оценка на Яндекс</dt>
 				</div>
 			</dl>
 			<div class="about__master">
@@ -173,7 +140,7 @@
 	</div>
 </section>
 
-<!-- ================= Reviews ================= -->
+<!-- ================= Reviews & map (card 12: real Yandex data) ================= -->
 <section class="section reviews-section">
 	<div class="container">
 		<div class="reviews-head">
@@ -182,45 +149,66 @@
 				<span class="reviews-head__stars" aria-hidden="true">★</span>
 				<a
 					class="reviews-head__link"
-					href="https://yandex.ru/maps/?text={encodeURIComponent(workshop.address)}"
+					href={yandexWidgets.reviewsUrl}
 					target="_blank"
 					rel="noreferrer"
 				>
-					{workshopStats.rating.replace(' / 5', '')} · {workshopStats.reviewsCount} отзывов на Яндекс ↗
+					{yandexWidgets.rating} · {yandexWidgets.ratingsCount} оценок на Яндекс ↗
 				</a>
 			</p>
 		</div>
-		<div class="reviews">
-			{#each showcase as review (review.id)}
-				<article class="review">
-					<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{stars(review.rating)}</p>
-					<p class="review__text" class:review__text--clamped={expanded !== review.id && review.text.length > 140}>
-						{review.text}
-					</p>
-					{#if review.text.length > 140 && expanded !== review.id}
-						<button class="review__more" type="button" onclick={() => (expanded = review.id)}>читать полностью</button>
-					{/if}
-					<footer class="review__footer">
-						<span class="review__avatar" aria-hidden="true">{review.author.slice(0, 1)}{review.author.split(' ')[1]?.[0] ?? ''}</span>
-						<div class="review__meta">
-							<span class="review__author">{review.author}</span>
-							<span class="review__date">{review.date}</span>
-						</div>
-					</footer>
-				</article>
-			{/each}
-		</div>
-	</div>
-</section>
 
-<!-- ================= CTA ================= -->
-<section class="section cta-section">
-	<div class="container cta-section__inner">
-		<div class="cta-section__copy">
-			<h2 class="cta-section__title">Починим телефон. Освободим ваш день.</h2>
-			<p class="cta-section__text">Оставьте заявку — всё остальное возьмём на себя.</p>
-		</div>
-		<Button href="/request" size="lg">Оставить заявку ↗</Button>
+		{#if isMockMode}
+			<!-- Демо без API: детерминированные отзывы остаются как страховка показа -->
+			<div class="reviews">
+				{#each showcase as review (review.id)}
+					<article class="review">
+						<p class="review__stars" aria-label={`Оценка ${review.rating} из 5`}>{stars(review.rating)}</p>
+						<p class="review__text" class:review__text--clamped={expanded !== review.id && review.text.length > 140}>
+							{review.text}
+						</p>
+						{#if review.text.length > 140 && expanded !== review.id}
+							<button class="review__more" type="button" onclick={() => (expanded = review.id)}>читать полностью</button>
+						{/if}
+						<footer class="review__footer">
+							<span class="review__avatar" aria-hidden="true">{review.author.slice(0, 1)}{review.author.split(' ')[1]?.[0] ?? ''}</span>
+							<div class="review__meta">
+								<span class="review__author">{review.author}</span>
+								<span class="review__date">{review.date}</span>
+							</div>
+						</footer>
+					</article>
+				{/each}
+			</div>
+		{:else}
+			<!-- Реальные данные организации: рейтинг-плитка + публичные ссылки -->
+			<div class="reviews-live">
+				<div class="reviews-live__side">
+					<a
+						class="reviews-live__card"
+						href={yandexWidgets.reviewsUrl}
+						target="_blank"
+						rel="noreferrer"
+					>
+						<span class="reviews-live__rating">{yandexWidgets.rating}</span>
+						<span class="reviews-live__stars" aria-hidden="true">★★★★☆</span>
+						<span class="reviews-live__count">{yandexWidgets.ratingsCount} оценок на Яндекс.Картах</span>
+						<span class="reviews-live__cta">Читать и оставить отзыв ↗</span>
+					</a>
+					<Button href="/request" size="lg">Оставить заявку ↗</Button>
+				</div>
+
+				<div class="reviews-live__map">
+					<iframe
+						class="reviews-live__iframe"
+						src={yandexWidgets.mapUrl}
+						title="Карта: мастерская «про телефон», Самара, проспект Ленина, 12А"
+						loading="lazy"
+						allowfullscreen
+					></iframe>
+				</div>
+			</div>
+		{/if}
 	</div>
 </section>
 
@@ -264,25 +252,6 @@
 		margin-top: 28px;
 	}
 
-	.hero__trust {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 10px;
-		margin-top: 32px;
-	}
-
-	.trust-item {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 14px;
-		font-weight: 500;
-	}
-
-	.trust-item__check {
-		color: var(--success);
-		display: inline-flex;
-	}
 
 	.hero__photo {
 		position: relative;
@@ -295,48 +264,13 @@
 		border-radius: 20px;
 	}
 
-	.hero__badge {
-		position: absolute;
-		left: -12px;
-		bottom: 24px;
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		background: var(--surface);
-		border-radius: 14px;
-		box-shadow: var(--shadow-card);
-		padding: 14px 18px;
-		max-width: 320px;
-	}
-
-	.hero__badge-icon {
-		width: 40px;
-		height: 40px;
-		border-radius: 10px;
-		background: var(--accent-soft);
-		color: var(--accent);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-	}
-
-	.hero__badge-title {
-		font-size: 14px;
-		font-weight: 600;
-	}
-
-	.hero__badge-subtitle {
-		font-size: 12px;
-		color: var(--muted);
-		margin-top: 2px;
-	}
 
 	.hero__location {
 		display: grid;
 		grid-template-columns: 1fr 1fr auto;
 		gap: 32px;
 		align-items: center;
+		margin-top: 40px;
 		padding-block: 0 48px;
 	}
 
@@ -529,6 +463,88 @@
 		margin-top: 10px;
 	}
 
+	/* ---------- Reviews (card 12: real Yandex) ---------- */
+	.reviews-live {
+		display: grid;
+		grid-template-columns: minmax(0, 0.55fr) minmax(0, 1.45fr);
+		gap: 24px;
+		align-items: stretch;
+	}
+
+	.reviews-live__side {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.reviews-live__side :global(.button) {
+		margin-top: auto;
+	}
+
+	.reviews-live__side :global(.button) {
+		width: 100%;
+	}
+
+	.reviews-live__card {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		background: var(--surface);
+		border: 1px solid var(--border);
+		border-radius: 20px;
+		padding: 24px 26px;
+		text-decoration: none;
+		transition: border-color 0.15s ease, transform 0.15s ease;
+	}
+
+	.reviews-live__card:hover {
+		border-color: var(--accent);
+		transform: translateY(-2px);
+	}
+
+	.reviews-live__rating {
+		font-size: 32px;
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		line-height: 1;
+	}
+
+	.reviews-live__stars {
+		color: var(--warning);
+		letter-spacing: 3px;
+	}
+
+	.reviews-live__count {
+		color: var(--muted);
+		font-size: 14px;
+	}
+
+	.reviews-live__cta {
+		margin-top: 6px;
+		font-size: 14px;
+		font-weight: 600;
+		color: var(--accent);
+	}
+
+
+	.reviews-live__map {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
+	.reviews-live__iframe {
+		width: 100%;
+		height: 100%;
+		flex: 1;
+		min-height: 0;
+		border: 0;
+		border-radius: 20px;
+	}
+
+
+
+
 	/* ---------- Reviews ---------- */
 	.reviews-section {
 		background: var(--bg-muted, var(--bg));
@@ -647,44 +663,6 @@
 		color: var(--muted);
 	}
 
-	/* ---------- CTA ---------- */
-	.cta-section {
-		padding-block: 40px 72px;
-	}
-
-	.cta-section__inner {
-		background: var(--accent);
-		color: #ffffff;
-		border-radius: 24px;
-		padding: 48px 56px;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 32px;
-	}
-
-	.cta-section__title {
-		font-size: clamp(26px, 3vw, 38px);
-		font-weight: 700;
-		letter-spacing: -0.02em;
-	}
-
-	.cta-section__text {
-		font-size: 15px;
-		opacity: 0.85;
-		margin-top: 10px;
-	}
-
-	.cta-section :global(.btn--primary) {
-		background: #ffffff;
-		color: var(--accent);
-		flex-shrink: 0;
-	}
-
-	.cta-section :global(.btn--primary:hover) {
-		background: var(--bg);
-	}
-
 	/* ---------- Responsive ---------- */
 	@media (max-width: 1024px) {
 		.steps {
@@ -731,11 +709,6 @@
 			grid-template-columns: 1fr;
 		}
 
-		.cta-section__inner {
-			padding: 32px 24px;
-			flex-direction: column;
-			align-items: flex-start;
-		}
 
 		.hero__title br {
 			display: none;
